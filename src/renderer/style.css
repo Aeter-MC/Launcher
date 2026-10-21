@@ -105,7 +105,6 @@ h1, h2, h3 { font-weight: 600; }
 .nav-dot.error { background: var(--color-danger); }
 
 .sidebar-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
-.folder-links { display: flex; gap: 2px; }
 
 .account-chip {
   display: flex; align-items: center; gap: 10px;
@@ -889,7 +888,6 @@ label.setting { cursor: pointer; }
 .sidebar-collapsed .nav-item { justify-content: center; padding: 0; }
 .sidebar-collapsed .nav-item.active::before { left: -8px; }
 .sidebar-collapsed .nav-dot { position: absolute; top: 7px; right: 7px; }
-.sidebar-collapsed .folder-links { flex-direction: column; align-items: center; }
 .sidebar-collapsed .account-chip { justify-content: center; padding: 6px 0; }
 
 /* ================= NARROW WINDOWS ================= */

@@ -85,11 +85,6 @@
       </nav>
 
       <div class="sidebar-bottom">
-        <div class="folder-links">
-          <button class="icon-btn" data-folder="minecraft" title="Папка .minecraft"><svg class="ic"><use href="#i-folder"/></svg></button>
-          <button class="icon-btn" data-folder="screenshots" title="Скриншоты"><svg class="ic"><use href="#i-image"/></svg></button>
-          <button class="icon-btn" data-folder="instances" title="Папка сборок AeterMC"><svg class="ic"><use href="#i-box"/></svg></button>
-        </div>
         <button class="account-chip" id="btn-open-accounts">
           <img class="account-chip-avatar" id="account-avatar" alt="">
           <span class="account-chip-text">
@@ -350,6 +345,15 @@
               <div class="setting-control">
                 <input type="hidden" id="input-game-dir">
                 <button class="btn btn-secondary" id="btn-browse-gamedir">Изменить</button>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Папка сборок AeterMC</div>
+                <div class="setting-hint mono-path">%APPDATA%\AeterMC\instances</div>
+              </div>
+              <div class="setting-control">
+                <button class="btn btn-secondary" data-folder="instances">Открыть</button>
               </div>
             </div>
             <div class="setting">
