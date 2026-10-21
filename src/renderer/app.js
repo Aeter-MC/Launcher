@@ -20,6 +20,7 @@ const state = {
   versionQuery: '',
   isLaunching: false,
   isGameRunning: false,
+  runningInstanceId: null, // build the running game was started from
   syncCategories: [],
   newInstanceLoader: 'vanilla',
   screenshots: null,     // loaded when the page is opened
@@ -77,8 +78,18 @@ function formatAgo(ts) {
   return date.toLocaleDateString('ru-RU', opts).replace(/\s?г\.$/, ' года');
 }
 
-function lastPlayedText(ts) {
-  return ts ? `Последний запуск ${agoSpan(ts)}` : 'Ещё не запускалась';
+function isRunning(inst) {
+  return state.isGameRunning && !!inst && inst.id === state.runningInstanceId;
+}
+
+function lastPlayedText(inst) {
+  if (isRunning(inst)) return 'Сейчас в игре';
+  return inst.lastPlayed ? `Последний запуск ${agoSpan(inst.lastPlayed)}` : 'Ещё не запускалась';
+}
+
+// short form for cards and rows: "в игре" while this build is running
+function lastPlayedShort(inst) {
+  return isRunning(inst) ? 'в игре' : agoSpan(inst.lastPlayed);
 }
 
 // relative time that keeps itself current: "только что" -> "1 минуту назад" -> ...
@@ -1169,7 +1180,7 @@ function renderHero() {
     if (hasMods(inst)) tags.push(`${LOADER_LABELS[inst.loader] || inst.loader}${inst.loaderVersion ? ' ' + inst.loaderVersion : ''}`);
     tags.push(`Minecraft ${inst.version}`);
     if (hasMods(inst)) tags.push(pluralize(inst.modCount, ['мод', 'мода', 'модов']));
-    meta.push(lastPlayedText(inst.lastPlayed));
+    meta.push(lastPlayedText(inst));
     if (inst.totalPlaytime) meta.push(`${formatPlaytime(inst.totalPlaytime)} в игре`);
   } else if (state.selected) {
     const v = findVersion(state.selected);
@@ -1217,7 +1228,7 @@ function renderRecent() {
       </div>
       <div class="rcard-title">${esc(inst.name)}</div>
       <div class="rcard-sub">${esc(hasMods(inst) ? `${LOADER_LABELS[inst.loader] || inst.loader} ${inst.loaderVersion || ''}`.trim() + ` · ${inst.version}` : `Minecraft ${inst.version}`)}</div>
-      <div class="rcard-time">${icon('clock')}${agoSpan(inst.lastPlayed)}</div>
+      <div class="rcard-time">${icon('clock')}${lastPlayedShort(inst)}</div>
     `;
     card.addEventListener('click', (e) => {
       if (!e.target.closest('button')) selectProfile(inst.id);
@@ -1301,7 +1312,7 @@ function buildStats(inst) {
   const stats = [];
   if (hasMods(inst)) stats.push(pluralize(inst.modCount, ['мод', 'мода', 'модов']));
   if (inst.totalPlaytime) stats.push(formatPlaytime(inst.totalPlaytime));
-  stats.push(agoSpan(inst.lastPlayed));
+  stats.push(lastPlayedShort(inst));
   return stats;
 }
 
@@ -1562,7 +1573,7 @@ function renderInstanceGrid() {
           <div class="trow-sub">${esc(instanceMeta(inst))}</div>
         </div>
         <div class="trow-aside">
-          <div>${agoSpan(inst.lastPlayed)}</div>
+          <div>${lastPlayedShort(inst)}</div>
           <div class="muted-2">${inst.totalPlaytime ? formatPlaytime(inst.totalPlaytime) : ''}</div>
         </div>
         ${buildActionsHtml(inst)}
@@ -1610,19 +1621,24 @@ function setupInstances() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#inst-loader-seg button').forEach(b => b.classList.toggle('active', b === btn));
       state.newInstanceLoader = btn.dataset.loader;
+      renderLoaderVersions();
     });
   });
+  $('select-inst-version').addEventListener('change', refreshLoaderChoice);
 
   $('btn-create-instance').addEventListener('click', async () => {
     const name = $('input-inst-name').value.trim() || 'Моя сборка';
     const version = $('select-inst-version').value;
+    const loader = state.newInstanceLoader;
+    const loaderVersion = loader === 'vanilla' ? '' : $('select-inst-loader-version').value;
     const status = $('inst-status');
-    const btn = $('btn-create-instance');
-    btn.disabled = true;
+    newInstanceForm.creating = true;
+    updateCreateButton();
     status.className = 'form-status';
-    status.textContent = state.newInstanceLoader === 'fabric' ? 'Установка Fabric…' : 'Создание…';
+    status.textContent = loader === 'vanilla' ? 'Создание…' : `Установка ${LOADER_LABELS[loader]} ${loaderVersion}…`;
+    const stopProgress = api.onLoaderInstallProgress((text) => { status.textContent = text; });
     try {
-      const inst = await api.createInstance({ name, version, loader: state.newInstanceLoader });
+      const inst = await api.createInstance({ name, version, loader, loaderVersion });
       $('modal-instance').classList.add('hidden');
       await loadVersionsAndInstances();
       if (inst) selectProfile(inst.id);
@@ -1631,9 +1647,87 @@ function setupInstances() {
       status.className = 'form-status error';
       status.textContent = errText(e);
     } finally {
-      btn.disabled = false;
+      stopProgress();
+      newInstanceForm.creating = false;
+      updateCreateButton();
     }
   });
+}
+
+// ---- New build: loader and its version ----
+const MOD_LOADERS = ['fabric', 'quilt', 'forge', 'neoforge'];
+const newInstanceForm = { creating: false, loaderReady: true, token: 0 };
+const loaderVersionLists = new Map(); // "forge|1.20.1" -> promise of [{ version, recommended }]
+
+function loaderVersionList(loader, mcVersion) {
+  const key = `${loader}|${mcVersion}`;
+  if (!loaderVersionLists.has(key)) {
+    const list = api.getLoaderVersions(loader, mcVersion);
+    list.catch(() => loaderVersionLists.delete(key)); // asked again next time
+    loaderVersionLists.set(key, list);
+  }
+  return loaderVersionLists.get(key);
+}
+
+function updateCreateButton() {
+  $('btn-create-instance').disabled = newInstanceForm.creating || !newInstanceForm.loaderReady;
+}
+
+// Dims loaders that have no builds for the chosen Minecraft version, then fills the version list
+function refreshLoaderChoice() {
+  const mcVersion = $('select-inst-version').value;
+  MOD_LOADERS.forEach(loader => {
+    const btn = document.querySelector(`#inst-loader-seg [data-loader="${loader}"]`);
+    btn.classList.remove('unavailable');
+    btn.title = '';
+    loaderVersionList(loader, mcVersion).then(list => {
+      if ($('select-inst-version').value !== mcVersion || list.length) return;
+      btn.classList.add('unavailable');
+      btn.title = `${LOADER_LABELS[loader]} нет для Minecraft ${mcVersion}`;
+    }).catch(() => {});
+  });
+  renderLoaderVersions();
+}
+
+async function renderLoaderVersions() {
+  const token = ++newInstanceForm.token;
+  const loader = state.newInstanceLoader;
+  const mcVersion = $('select-inst-version').value;
+  const select = $('select-inst-loader-version');
+  const status = $('inst-status');
+  const setStatus = (text, error = false) => {
+    if (newInstanceForm.creating) return;
+    status.className = error ? 'form-status error' : 'form-status';
+    status.textContent = text;
+  };
+
+  $('inst-loader-version-wrap').classList.toggle('hidden', loader === 'vanilla');
+  setStatus('');
+  newInstanceForm.loaderReady = loader === 'vanilla';
+  updateCreateButton();
+  if (loader === 'vanilla') return;
+
+  select.disabled = true;
+  select.innerHTML = '<option>Загрузка…</option>';
+  try {
+    const list = await loaderVersionList(loader, mcVersion);
+    if (token !== newInstanceForm.token) return;
+    if (!list.length) {
+      select.innerHTML = '<option>—</option>';
+      setStatus(`${LOADER_LABELS[loader]} нет для Minecraft ${mcVersion}`, true);
+      return;
+    }
+    select.innerHTML = list.map(v =>
+      `<option value="${esc(v.version)}">${esc(v.version)}${v.recommended ? ' — рекомендуемая' : ''}</option>`).join('');
+    select.value = (list.find(v => v.recommended) || list[0]).version;
+    select.disabled = false;
+    newInstanceForm.loaderReady = true;
+    updateCreateButton();
+  } catch (e) {
+    if (token !== newInstanceForm.token) return;
+    select.innerHTML = '<option>—</option>';
+    setStatus(`Не удалось получить версии ${LOADER_LABELS[loader]}: ${errText(e)}`, true);
+  }
 }
 
 function openNewInstanceModal() {
@@ -1647,7 +1741,8 @@ function openNewInstanceModal() {
   });
   if (state.latestRelease) select.value = state.latestRelease;
   $('input-inst-name').value = '';
-  $('inst-status').textContent = '';
+  if (!newInstanceForm.creating) $('inst-status').textContent = '';
+  refreshLoaderChoice();
   openModal('modal-instance');
   $('input-inst-name').focus();
 }
@@ -1947,7 +2042,7 @@ function setupMods() {
     dragDepth = 0;
     overlay.classList.add('hidden');
     if (!$('page-mods').classList.contains('active')) {
-      if (e.dataTransfer?.files?.length) toast('Моды ставятся в сборку: откройте её моды или выберите сборку с Fabric', 'error');
+      if (e.dataTransfer?.files?.length) toast('Моды ставятся в сборку: откройте её моды или выберите сборку с загрузчиком модов', 'error');
       return;
     }
     const jars = [...(e.dataTransfer?.files || [])].filter(f => f.name.endsWith('.jar')).map(f => f.path);
@@ -2354,7 +2449,9 @@ async function restoreGameState() {
   if (!game) return;
   if (game.running) {
     state.isGameRunning = true;
+    state.runningInstanceId = game.instanceId || null;
     setLaunchUi('running');
+    if (state.instances.length) renderAll(); // otherwise the builds are drawn once they load
   } else if (game.launching && !state.isLaunching) {
     // the launch call belongs to the old page, so its result arrives only as events
     state.isLaunching = true;
@@ -2382,16 +2479,19 @@ function setupSubscriptions() {
   });
 
 
-  api.onGameLaunched(() => {
+  api.onGameLaunched((instanceId) => {
     state.isLaunching = false;
     state.restoredLaunch = false;
     state.isGameRunning = true;
+    state.runningInstanceId = instanceId || null;
     setLaunchUi('running');
+    refreshInstanceCounts(); // launch time was just recorded
   });
 
   api.onGameClosed((code) => {
     state.isLaunching = false;
     state.isGameRunning = false;
+    state.runningInstanceId = null;
     setLaunchUi('idle');
     if (code && code !== 0) {
       toast(`Игра завершилась с ошибкой (код ${code}). Подробности в консоли.`, 'error', 6000);

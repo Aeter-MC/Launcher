@@ -248,6 +248,8 @@ h1, h2, h3 { font-weight: 600; }
 .segmented button.active { background: var(--color-hover); color: var(--color-text); font-weight: 600; }
 .segmented-full { display: flex; width: 100%; margin-bottom: 14px; }
 .segmented-full button { flex: 1; }
+/* option that does not exist for the current choice (a loader without builds for the version) */
+.segmented button.unavailable { opacity: .45; }
 
 /* Tabs: underline style for page sections */
 .tabs { display: flex; gap: 18px; align-self: flex-end; }
@@ -804,6 +806,7 @@ label.setting { cursor: pointer; }
   box-shadow: var(--shadow-modal);
 }
 .modal-sm { width: 390px; }
+.modal-md { width: 500px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 4px; }
 .modal-head h3 { font-size: var(--font-size-heading); }
 .modal-body { padding: 10px 16px 16px; overflow-y: auto; }

@@ -610,7 +610,7 @@
 
   <!-- ============ MODAL: NEW INSTANCE ============ -->
   <div class="modal hidden" id="modal-instance">
-    <div class="modal-box">
+    <div class="modal-box modal-md">
       <div class="modal-head">
         <h3>Новая сборка</h3>
         <button class="icon-btn" data-close-modal><svg class="ic"><use href="#i-x"/></svg></button>
@@ -626,6 +626,14 @@
         <div class="segmented segmented-full" id="inst-loader-seg">
           <button class="active" data-loader="vanilla">Без модов</button>
           <button data-loader="fabric">Fabric</button>
+          <button data-loader="quilt">Quilt</button>
+          <button data-loader="forge">Forge</button>
+          <button data-loader="neoforge">NeoForge</button>
+        </div>
+
+        <div class="hidden" id="inst-loader-version-wrap">
+          <label class="field-label" for="select-inst-loader-version">Версия загрузчика</label>
+          <select id="select-inst-loader-version" class="select"></select>
         </div>
         <p class="hint">Каждая сборка хранит свои моды, миры и настройки отдельно. Версии и библиотеки общие — повторно не скачиваются.</p>
         <div class="form-status" id="inst-status"></div>

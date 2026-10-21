@@ -118,6 +118,7 @@ class InstancesManager {
           version: data.version || '1.21.1',
           loader: data.loader || 'vanilla',
           loaderVersion: data.loaderVersion || '',
+          versionId: data.versionId || '',
           icon: data.icon || 'grass',
           iconBlock: data.iconBlock || null,
           iconImage: data.customIcon ? iconDataUrl(path.join(dirPath, ICON_FILE)) : null,
@@ -372,6 +373,7 @@ class InstancesManager {
       version = '1.21.1',
       loader = 'vanilla',
       loaderVersion = '',
+      versionId = version, // loader profile in versions/, installed by the caller
       icon = 'grass'
     } = options;
 
@@ -385,23 +387,13 @@ class InstancesManager {
     this.ensureDir(path.join(mcDir, 'resourcepacks'));
     this.ensureDir(path.join(mcDir, 'shaderpacks'));
 
-    let finalVersionId = version;
-    let finalLoaderVersion = loaderVersion;
-
-    // Install the Fabric profile right away so a broken version is reported now, not at launch
-    if (loader === 'fabric' && this.versionManager) {
-      const fabResult = await this.versionManager.installFabric(version, loaderVersion || undefined);
-      finalVersionId = fabResult.id;
-      finalLoaderVersion = fabResult.loaderVersion;
-    }
-
     const instData = {
       id: safeSlug,
       name: name,
       version: version,
-      versionId: finalVersionId,
+      versionId: versionId,
       loader: loader,
-      loaderVersion: finalLoaderVersion,
+      loaderVersion: loaderVersion,
       icon: icon,
       created: Date.now(),
       lastPlayed: null,
@@ -502,6 +494,34 @@ class InstancesManager {
   }
 
   /**
+   * Records the launch time as soon as the game has started, not when it closes:
+   * otherwise a running build still shows its previous launch.
+   */
+  markLaunched(instanceId) {
+    const target = this.listInstances().find(i => i.id === instanceId);
+    if (!target) return;
+
+    if (target.isPrism) {
+      const cfgPath = path.join(target.path, 'instance.cfg');
+      try {
+        let cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : '[General]\n';
+        cfg = setCfgValue(cfg, 'lastLaunchTime', Date.now());
+        fs.writeFileSync(cfgPath, cfg, 'utf-8');
+      } catch (e) {}
+      return;
+    }
+
+    const configPath = path.join(target.path, 'instance.json');
+    if (fs.existsSync(configPath)) {
+      try {
+        const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        d.lastPlayed = Date.now();
+        fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
+      } catch (e) {}
+    }
+  }
+
+  /**
    * Updates playtime for an instance.
    */
   updatePlaytime(instanceId, seconds) {
@@ -516,7 +536,6 @@ class InstancesManager {
         let cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : '[General]\n';
         cfg = setCfgValue(cfg, 'totalTimePlayed', (target.totalPlaytime || 0) + seconds);
         cfg = setCfgValue(cfg, 'lastTimePlayed', seconds);
-        cfg = setCfgValue(cfg, 'lastLaunchTime', Date.now());
         fs.writeFileSync(cfgPath, cfg, 'utf-8');
       } catch (e) {}
       return;
@@ -527,7 +546,6 @@ class InstancesManager {
       try {
         const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         d.totalPlaytime = (d.totalPlaytime || 0) + seconds;
-        d.lastPlayed = Date.now();
         fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
       } catch (e) {}
     }

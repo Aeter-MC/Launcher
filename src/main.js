@@ -25,6 +25,7 @@ const os = require('os');
 
 const { SettingsManager, DEFAULT_MINECRAFT_DIR } = require('./settings-manager');
 const { VersionManager } = require('./version-manager');
+const { LoaderManager } = require('./loaders');
 const { detectJavaInstallations, pickJavaFor } = require('./java-detector');
 const { LauncherCore } = require('./launcher-core');
 const { AccountsManager } = require('./accounts-manager');
@@ -83,6 +84,7 @@ const currentSettings = settingsManager.get();
 // Not "cache": on Windows that is the same folder as Chromium's own Cache, which it cleans on startup
 const diskCache = new DiskCache(path.join(userDataDir, 'mcl-cache'));
 const versionManager = new VersionManager(currentSettings.gameDir, diskCache);
+const loaderManager = new LoaderManager(versionManager);
 const accountsManager = new AccountsManager(userDataDir, currentSettings.gameDir);
 const instancesManager = new InstancesManager(userDataDir, versionManager);
 instancesManager.includePrism = currentSettings.prismImport === true;
@@ -106,6 +108,21 @@ async function installJava(major) {
   const exe = await javaInstaller.install(major, (p) => sendToWindow('java-install-progress', { major, ...p }));
   await getJavaList(true);
   return exe;
+}
+
+/** Java that fits a Minecraft version: an installed one, otherwise Temurin is downloaded. */
+async function javaForVersion(versionId, log = () => {}) {
+  const required = await versionManager.getRequiredJava(versionId);
+  const java = pickJavaFor(await getJavaList(), required);
+  if (java) return java.path;
+  log('info', `[JAVA]: Нужна Java ${required}, её нет — скачиваю Eclipse Temurin ${required}…`);
+  try {
+    const javaPath = await installJava(required);
+    log('info', `[JAVA]: Java ${required} установлена: ${javaPath}`);
+    return javaPath;
+  } catch (e) {
+    throw new Error(`Не удалось скачать Java ${required}: ${e.message}`);
+  }
 }
 
 function createWindow() {
@@ -358,8 +375,15 @@ ipcMain.handle('list-instances', () => {
   return instancesManager.listInstances();
 });
 
-ipcMain.handle('create-instance', async (event, options) => {
-  return await instancesManager.createInstance(options);
+// The loader is installed before the build folder appears, so a failed install leaves nothing behind
+ipcMain.handle('create-instance', async (event, options = {}) => {
+  const { loader = 'vanilla', version } = options;
+  if (loader === 'vanilla') return await instancesManager.createInstance(options);
+  const installed = await loaderManager.install(loader, version, options.loaderVersion || '', {
+    onStatus: (text) => sendToWindow('loader-install-progress', text),
+    getJava: () => javaForVersion(version)
+  });
+  return await instancesManager.createInstance({ ...options, loaderVersion: installed.loaderVersion, versionId: installed.id });
 });
 
 ipcMain.handle('copy-instance', (event, instanceId, newName) => {
@@ -486,6 +510,10 @@ ipcMain.handle('get-versions', async (event, showSnapshots) => {
 
 ipcMain.handle('install-fabric', async (event, gameVersion, loaderVersion) => {
   return await versionManager.installFabric(gameVersion, loaderVersion);
+});
+
+ipcMain.handle('get-loader-versions', async (event, loader, gameVersion) => {
+  return await loaderManager.listVersions(loader, gameVersion);
 });
 
 ipcMain.handle('detect-java', async (event, force) => {
@@ -616,8 +644,9 @@ function sendToWindow(channel, data) {
   }
 }
 
-// true for the whole launch, including Fabric/Java preparation before launcherCore starts
+// true for the whole launch, including loader/Java preparation before launcherCore starts
 let launchInProgress = false;
+let runningInstanceId = null; // build the running game was started from
 
 ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
   const settings = settingsManager.get();
@@ -642,18 +671,15 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
       gameDir = inst.minecraftDir;
       versionNumber = inst.version;
 
-      if (inst.loader === 'fabric') {
-        log('info', `[LAUNCHER]: Подготовка Fabric ${inst.loaderVersion || ''} для ${inst.version}`);
-        const fab = await versionManager.installFabric(inst.version, inst.loaderVersion || undefined);
-        customVersion = fab.id;
-      } else if (inst.loader !== 'vanilla') {
-        // Forge / NeoForge / Quilt: use an already installed profile from versions/ if there is one
-        const installed = versionManager.getInstalledVersions().find(v =>
-          v.inheritsFrom === inst.version && v.id.toLowerCase().includes(inst.loader));
-        if (!installed) {
-          throw new Error(`Загрузчик ${inst.loader} для ${inst.version} не установлен. Установите его официальным установщиком в ${root}.`);
-        }
-        customVersion = installed.id;
+      if (inst.loader !== 'vanilla') {
+        // installed when the build was made; builds from Prism or a cleaned versions/ get it now
+        log('info', `[LAUNCHER]: Подготовка ${LoaderManager.label(inst.loader)} ${inst.loaderVersion || ''} для ${inst.version}`);
+        const profile = await loaderManager.ensure(inst.loader, inst.version, inst.loaderVersion, {
+          knownId: inst.versionId,
+          onStatus: (text) => { if (!/^Библиотеки/.test(text)) log('info', `[LAUNCHER]: ${text}`); },
+          getJava: () => javaForVersion(inst.version, log)
+        });
+        customVersion = profile.id;
       }
     } else {
       const resolved = versionManager.resolveLaunchVersion(launchOpts.version || settings.selectedVersion || '1.21.1');
@@ -662,23 +688,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
     }
 
     // Java: explicit choice from settings, otherwise the one matching the version
-    let javaPath = settings.javaPath;
-    if (!javaPath) {
-      const required = await versionManager.getRequiredJava(customVersion || versionNumber);
-      const java = pickJavaFor(await getJavaList(), required);
-      if (java) {
-        javaPath = java.path;
-      } else {
-        // not installed anywhere: fetch Temurin into the launcher's own folder and use it
-        log('info', `[JAVA]: Нужна Java ${required}, её нет — скачиваю Eclipse Temurin ${required}…`);
-        try {
-          javaPath = await installJava(required);
-          log('info', `[JAVA]: Java ${required} установлена: ${javaPath}`);
-        } catch (e) {
-          throw new Error(`Не удалось скачать Java ${required}: ${e.message}`);
-        }
-      }
-    }
+    const javaPath = settings.javaPath || await javaForVersion(customVersion || versionNumber, log);
 
     log('info', `[LAUNCHER]: Версия ${customVersion || versionNumber}, папка игры: ${gameDir}`);
 
@@ -694,6 +704,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
         minRam: settings.minRam || 2,
         maxRam: settings.maxRam || 4,
         customJvmArgs: settings.customJvmArgs || '',
+        profileJvmArgs: customVersion ? loaderManager.jvmArgs(customVersion) : [],
         resolutionWidth: settings.resolutionWidth || 1280,
         resolutionHeight: settings.resolutionHeight || 720,
         fullscreen: settings.fullscreen || false,
@@ -703,7 +714,9 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
         onProgress: (progressData) => sendToWindow('launch-progress', progressData),
         onLog: (logData) => emitLog(logData),
         onLaunched: () => {
-          sendToWindow('game-launched');
+          if (instanceId) instancesManager.markLaunched(instanceId);
+          runningInstanceId = instanceId;
+          sendToWindow('game-launched', instanceId);
           if (!mainWindow || mainWindow.isDestroyed()) return;
           if (settings.actionAfterLaunch === 'minimize') {
             mainWindow.minimize();
@@ -712,6 +725,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
           }
         },
         onClose: (code, durationSeconds) => {
+          runningInstanceId = null;
           playtimeLog.add(durationSeconds || 0);
           if (instanceId) {
             instancesManager.updatePlaytime(instanceId, durationSeconds || 0);
@@ -737,6 +751,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
 // lets a reloaded window (Ctrl+R) pick up a game that is still starting or running
 ipcMain.handle('get-game-state', () => ({
   running: !!launcherCore.isRunning,
+  instanceId: launcherCore.isRunning ? runningInstanceId : null,
   launching: launchInProgress || !!launcherCore.isLaunching
 }));
 

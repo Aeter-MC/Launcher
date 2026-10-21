@@ -54,6 +54,12 @@ contextBridge.exposeInMainWorld('api', {
   // Versions & Java
   getVersions: (showSnapshots) => ipcRenderer.invoke('get-versions', showSnapshots),
   installFabric: (gameVersion, loaderVersion) => ipcRenderer.invoke('install-fabric', gameVersion, loaderVersion),
+  getLoaderVersions: (loader, gameVersion) => ipcRenderer.invoke('get-loader-versions', loader, gameVersion),
+  onLoaderInstallProgress: (callback) => {
+    const handler = (event, text) => callback(text);
+    ipcRenderer.on('loader-install-progress', handler);
+    return () => ipcRenderer.removeListener('loader-install-progress', handler);
+  },
   detectJava: (force) => ipcRenderer.invoke('detect-java', force),
   installJava: (major) => ipcRenderer.invoke('install-java', major),
   getJavaRequirements: () => ipcRenderer.invoke('java-requirements'),
@@ -132,7 +138,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('launch-log', handler);
   },
   onGameLaunched: (callback) => {
-    const handler = () => callback();
+    const handler = (event, instanceId) => callback(instanceId);
     ipcRenderer.on('game-launched', handler);
     return () => ipcRenderer.removeListener('game-launched', handler);
   },

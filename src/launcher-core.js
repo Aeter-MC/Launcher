@@ -31,6 +31,7 @@ class LauncherCore {
    * gameDir   - directory with saves/mods/options (instance folder or root itself)
    * version   - vanilla Minecraft version number (e.g. "1.21.1")
    * customVersion - id of a custom version json in root/versions (e.g. Fabric profile)
+   * profileJvmArgs - JVM arguments that profile needs (Forge/NeoForge module path etc.)
    */
   async launch(options, callbacks = {}) {
     if (this.isRunning || this.isLaunching) {
@@ -48,6 +49,7 @@ class LauncherCore {
       minRam = 2,
       maxRam = 4,
       customJvmArgs = '',
+      profileJvmArgs = [],
       resolutionWidth = 1280,
       resolutionHeight = 720,
       fullscreen = false,
@@ -88,7 +90,7 @@ class LauncherCore {
       }
 
       const customArgs = String(customJvmArgs || '').split(/\s+/).filter(Boolean);
-      customArgs.push(...extraJvmArgs);
+      customArgs.push(...extraJvmArgs, ...profileJvmArgs);
 
       const max = Math.max(1, Number(maxRam) || 4);
       const min = Math.min(max, Math.max(1, Number(minRam) || 1));
