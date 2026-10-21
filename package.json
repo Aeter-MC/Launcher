@@ -1,0 +1,66 @@
+{
+  "name": "aetermc",
+  "version": "1.0.0",
+  "description": "AeterMC — Minecraft launcher",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "tokens": "node scripts/build-tokens.js",
+    "tokens:watch": "node scripts/build-tokens.js --watch",
+    "build": "npm run splash && node scripts/build.js",
+    "build:setup": "npm run splash && node scripts/build.js --setup-only",
+    "splash": "node installer/build-splash.js",
+    "installer": "electron . --installer",
+    "uninstaller": "electron . --uninstall",
+    "preview": "node preview/server.js",
+    "icon": "electron scripts/render-icon.js"
+  },
+  "keywords": [
+    "minecraft",
+    "launcher",
+    "electron"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "axios": "^1.6.0",
+    "minecraft-launcher-core": "^3.18.2",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  },
+  "build": {
+    "appId": "dev.aetermc.launcher",
+    "productName": "AeterMC",
+    "copyright": "AeterMC",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      {
+        "from": "installer/src",
+        "to": "src/installer"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "portable": {
+      "artifactName": "AeterMC-${version}-portable.${ext}"
+    }
+  }
+}

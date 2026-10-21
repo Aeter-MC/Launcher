@@ -1,0 +1,109 @@
+/* Installer window. Base components (buttons, inputs, switches, progress) come from the launcher's style.css. */
+
+.setup-app { flex: 1; display: flex; min-height: 0; }
+
+/* ---- left column: same look as the launcher sidebar ---- */
+.setup-side {
+  width: 220px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  padding: calc(var(--size-titlebar) + 14px) 10px 14px;
+  background: var(--color-bg-side);
+  border-right: 1px solid var(--color-line);
+  -webkit-app-region: drag;
+}
+.setup-brand { display: flex; align-items: center; gap: 12px; padding: 0 10px 22px; }
+.setup-brand-logo { width: 40px; height: 40px; flex-shrink: 0; }
+.setup-brand-name { font-family: var(--font-family-display); font-size: var(--font-size-lg); font-weight: 700; }
+.setup-brand-ver { font-size: var(--font-size-xs); color: var(--color-text-3); }
+
+.setup-steps { display: flex; flex-direction: column; gap: 1px; }
+.setup-steps .step {
+  position: relative;
+  display: flex; align-items: center; gap: 11px;
+  height: 36px; padding: 0 10px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-3);
+}
+.setup-steps .step-num {
+  width: 20px; height: 20px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--color-line-strong);
+  font-size: var(--font-size-xs); font-weight: 600;
+}
+.setup-steps .step-num .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+.setup-steps .step.active { color: var(--color-text); background: var(--color-surface-2); }
+.setup-steps .step.active::before {
+  content: ""; position: absolute; left: -10px; top: 9px; bottom: 9px;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--color-accent);
+  animation: bar-in .18s ease-out;
+}
+.setup-steps .step.active .step-num { border-color: var(--color-accent); color: var(--color-accent-text); }
+.setup-steps .step.done { color: var(--color-text-2); }
+.setup-steps .step.done .step-num { background: var(--color-accent-soft); border-color: transparent; color: var(--color-accent-text); }
+.setup-side-foot { margin-top: auto; padding: 0 10px; font-size: var(--font-size-xs); color: var(--color-text-3); }
+
+/* ---- right column ---- */
+.setup-main {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  padding-top: var(--size-titlebar);
+}
+.screen {
+  display: none;
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 18px 32px 8px;
+}
+.screen.active { display: block; animation: step-in .22s ease-out; }
+.screen h1 { font-family: var(--font-family-display); font-size: var(--font-size-title); margin-bottom: 6px; }
+.screen .lead { color: var(--color-text-2); max-width: 460px; }
+.screen code { font-family: var(--font-family-mono); font-size: var(--font-size-sm); background: var(--color-surface-2); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+.screen .field-label { margin-top: 22px; }
+
+.opt-list { margin-top: 18px; border: 1px solid var(--color-line); border-radius: var(--radius-md); overflow: hidden; }
+.opt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; cursor: pointer; }
+.opt + .opt { border-top: 1px solid var(--color-line); }
+.opt:hover { background: var(--color-surface); }
+.opt .grow { display: flex; flex-direction: column; }
+.opt b { font-weight: 500; }
+.opt small { color: var(--color-text-3); font-size: var(--font-size-sm); margin-top: 2px; }
+.opt-icon {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: grid; place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2); color: var(--color-text-2);
+}
+.opt-icon .ic { width: 16px; height: 16px; }
+
+.notice {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-warn-soft); color: var(--color-warn);
+  font-size: var(--font-size-sm);
+}
+
+.progress-hero, .done-hero { text-align: center; padding-top: 34px; }
+.progress-hero .lead, .done-hero .lead { margin: 0 auto; }
+.done-hero .lead { word-break: break-word; }
+.spinner-logo { width: 64px; height: 64px; margin: 0 auto 18px; }
+.spinner-logo .logo { width: 100%; height: 100%; animation: logo-pulse 1.6s ease-in-out infinite; }
+@keyframes logo-pulse { 50% { opacity: .55; transform: scale(.94); } }
+.screen[data-screen="progress"] .progress { margin-top: 34px; }
+.progress-labels .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 12px; color: var(--color-text-3); }
+.setup-done-icon {
+  width: 64px; height: 64px; margin: 0 auto 18px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--color-accent-soft); color: var(--color-accent-text);
+  animation: pop .25s cubic-bezier(.2, .9, .3, 1.3);
+}
+.setup-done-icon .ic { width: 30px; height: 30px; stroke-width: 2.4; }
+.setup-done-icon.error { background: var(--color-danger-soft); color: var(--color-danger); }
+
+.setup-foot {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--color-line);
+}
+.setup-foot .btn-primary { min-width: 120px; }

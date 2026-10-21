@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' https: data: file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>AeterMC</title>
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Icon sprite -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+      <symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></symbol>
+      <symbol id="i-puzzle" viewBox="0 0 24 24"><path d="M10 4a2 2 0 1 1 4 0v1h4a1 1 0 0 1 1 1v4h-1a2 2 0 1 0 0 4h1v4a1 1 0 0 1-1 1h-4v-1a2 2 0 1 0-4 0v1H6a1 1 0 0 1-1-1v-4h1a2 2 0 1 0 0-4H5V6a1 1 0 0 1 1-1h4z"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5z" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.8-4M4 4v4h4M4 13a8 8 0 0 0 14.8 4M20 20v-4h-4"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+      <symbol id="i-coffee" viewBox="0 0 24 24"><path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5zM17 9h1a3 3 0 0 1 0 6h-1M8 2v3M12 2v3"/></symbol>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+      <symbol id="i-transfer" viewBox="0 0 24 24"><path d="M4 8h14m-4-4 4 4-4 4M20 16H6m4-4-4 4 4 4"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="19" cy="12" r="1.4" fill="currentColor"/></symbol>
+      <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+      <symbol id="i-logo" viewBox="500 500 1048 1048"><g fill-opacity="1"> <polygon points="1024,502 953,728 1024,868 1095,728" /> <polygon points="875,603 533,1382 690,1333 746,1207 953,728" /> <polygon points="1173,603 1095,728 1302,1207 1358,1333 1515,1382" /> <polygon points="923,1101 746,1207 1302,1207 1125,1101" /> </g> <g fill-opacity="0.82"> <polygon points="1024,502 875,603 953,728" /> <polygon points="1024,502 1095,728 1173,603" /> <polygon points="953,728 746,1207 923,1101 1024,868" /> <polygon points="1095,728 1024,868 1125,1101 1302,1207" /> <polygon points="746,1207 690,1333 761,1471 833,1310" /> <polygon points="533,1382 599,1546 690,1333" /> <polygon points="1302,1207 1215,1310 1287,1471 1358,1333" /> <polygon points="1515,1382 1358,1333 1449,1546" /> </g> <g fill-opacity="0.65"> <polygon points="746,1207 833,1310 1215,1310 1302,1207" /> <polygon points="690,1333 599,1546 761,1471" /> <polygon points="1358,1333 1287,1471 1449,1546" /> </g></symbol>
+      <symbol id="i-news" viewBox="0 0 24 24"><path d="M5 4h11a1 1 0 0 1 1 1v14a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1z"/><path d="M17 9h2a1 1 0 0 1 1 1v9a2 2 0 0 1-2 2M8 8h5M8 12h5M8 16h3"/></symbol>
+      <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 20V9m-5 5 5-5 5 5M5 4h14"/></symbol>
+    </defs>
+  </svg>
+
+  <!-- Titlebar -->
+  <header class="titlebar">
+    <div class="titlebar-drag"></div>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="btn-minimize" title="Свернуть">
+        <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
+      </button>
+      <button class="titlebar-btn" id="btn-maximize" title="Развернуть">
+        <svg viewBox="0 0 12 12" id="icon-maximize"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
+      </button>
+      <button class="titlebar-btn titlebar-close" id="btn-close" title="Закрыть">
+        <svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7m0-7-7 7"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <button class="brand" id="btn-sidebar-toggle" title="Свернуть меню">
+        <span class="brand-logo">
+          <svg class="logo"><use href="#i-logo"/></svg>
+          <svg class="ic brand-toggle"><use href="#i-sidebar"/></svg>
+        </span>
+        <span class="brand-name">AeterMC</span>
+      </button>
+      <nav class="nav">
+        <button class="nav-item active" data-tab="home" title="Главная"><svg class="ic"><use href="#i-home"/></svg><span>Главная</span></button>
+        <button class="nav-item" data-tab="instances" title="Сборки"><svg class="ic"><use href="#i-box"/></svg><span>Сборки</span></button>
+        <button class="nav-item" data-tab="screenshots" title="Скриншоты"><svg class="ic"><use href="#i-image"/></svg><span>Скриншоты</span></button>
+        <button class="nav-item" data-tab="logs" title="Консоль"><svg class="ic"><use href="#i-terminal"/></svg><span>Консоль</span><span class="nav-dot" id="log-indicator"></span></button>
+        <button class="nav-item" data-tab="settings" title="Настройки"><svg class="ic"><use href="#i-settings"/></svg><span>Настройки</span></button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="folder-links">
+          <button class="icon-btn" data-folder="minecraft" title="Папка .minecraft"><svg class="ic"><use href="#i-folder"/></svg></button>
+          <button class="icon-btn" data-folder="screenshots" title="Скриншоты"><svg class="ic"><use href="#i-image"/></svg></button>
+          <button class="icon-btn" data-folder="instances" title="Папка сборок AeterMC"><svg class="ic"><use href="#i-box"/></svg></button>
+        </div>
+        <button class="account-chip" id="btn-open-accounts">
+          <img class="account-chip-avatar" id="account-avatar" alt="">
+          <span class="account-chip-text">
+            <span class="account-chip-name" id="account-name">Steve</span>
+            <span class="account-chip-type" id="account-type">Оффлайн</span>
+          </span>
+          <svg class="ic ic-sm"><use href="#i-chevron"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- ============ HOME ============ -->
+      <section class="page active page-home" id="page-home">
+        <h1 class="home-greeting" id="home-greeting">Привет</h1>
+
+        <div class="home-layout">
+          <div class="home-main">
+            <div class="hero" id="hero">
+              <svg class="hero-scene" viewBox="0 0 690 280" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+                <circle class="hero-sky-orb" cx="580" cy="66" r="22"/>
+                <path class="hero-far" d="M0 196h48v-16h56v-28h76v28h42v32h52v-12h60v-28h40v-48h74v24h56v28h60v-40h56v52h70v228H0z"/>
+                <path class="hero-near" d="M0 232h40v-12h70v-26h96v20h86v-20h64v28h74v-12h96v30h70v-22h94v262H0z"/>
+              </svg>
+              <div class="hero-body">
+                <div class="hero-tags" id="hero-tags"></div>
+                <div class="hero-row">
+                  <div class="hero-icon" id="hero-icon"></div>
+                  <div class="hero-text">
+                    <h2 class="hero-title" id="hero-title">—</h2>
+                    <div class="hero-meta" id="hero-meta"></div>
+                  </div>
+                  <button class="btn-play" id="btn-launch">
+                    <svg class="ic"><use id="btn-launch-icon" href="#i-play"/></svg>
+                    <span id="btn-launch-text">Играть</span>
+                  </button>
+                </div>
+                <div class="progress" id="progress">
+                  <div class="progress-labels">
+                    <span id="progress-text">Подготовка…</span>
+                    <span id="progress-percent"></span>
+                  </div>
+                  <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-head">
+              <h2>Недавние сборки</h2>
+              <button class="link-btn link-accent" data-goto="instances">Все сборки</button>
+            </div>
+            <div class="recent-grid" id="recent-instances"></div>
+          </div>
+
+          <aside class="home-side">
+            <div class="side-card">
+              <h3 class="side-title">Новости AeterMC</h3>
+              <div class="news-empty">
+                <svg class="ic ic-lg"><use href="#i-news"/></svg>
+                <span>Здесь будут новости лаунчера</span>
+              </div>
+            </div>
+            <div class="side-card">
+              <div class="side-title-row">
+                <h3 class="side-title">Время за неделю</h3>
+                <b class="week-total" id="week-total">0 ч</b>
+              </div>
+              <div class="week-chart" id="week-chart"></div>
+            </div>
+            <div class="side-card tip-card">
+              <svg class="ic"><use href="#i-bulb"/></svg>
+              <p id="home-tip"></p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ============ SCREENSHOTS ============ -->
+      <section class="page" id="page-screenshots">
+        <div class="page-head">
+          <h1>Скриншоты <span class="page-count" id="shots-count"></span></h1>
+          <div class="toolbar-right">
+            <select id="shots-filter" class="select"></select>
+          </div>
+        </div>
+        <div id="shots-list"></div>
+      </section>
+
+      <!-- ============ BUILDS ============ -->
+      <section class="page" id="page-instances">
+        <div class="page-head">
+          <h1>Сборки</h1>
+          <div class="toolbar-right">
+            <div class="segmented segmented-icons" id="builds-view-seg">
+              <button data-builds-view="grid" title="Сеткой"><svg class="ic ic-sm"><use href="#i-grid"/></svg></button>
+              <button data-builds-view="list" title="Списком"><svg class="ic ic-sm"><use href="#i-list"/></svg></button>
+            </div>
+            <button class="btn btn-primary" id="btn-new-instance"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Новая сборка</button>
+          </div>
+        </div>
+        <div class="table" id="instance-grid"></div>
+      </section>
+
+      <!-- ============ BUILD MODS ============ -->
+      <section class="page" id="page-mods">
+        <div class="page-head">
+          <div class="mods-head">
+            <button class="icon-btn" id="btn-mods-back" title="К сборкам"><svg class="ic ic-flip"><use href="#i-chevron"/></svg></button>
+            <div id="mods-head-icon"></div>
+            <div class="mods-head-text">
+              <h1 id="mods-title">Моды</h1>
+              <div class="muted small" id="mods-subtitle"></div>
+            </div>
+          </div>
+          <div class="tabs" id="mods-seg">
+            <button class="active" data-view="view-mods-installed">Установленные <span class="tab-count" id="mods-tab-count"></span></button>
+            <button data-view="view-mods-modrinth">Каталог Modrinth</button>
+          </div>
+        </div>
+
+        <div class="view active" id="view-mods-installed">
+          <div class="toolbar">
+            <div class="search">
+              <svg class="ic ic-sm"><use href="#i-search"/></svg>
+              <input type="text" id="search-installed-mods" placeholder="Поиск">
+            </div>
+            <div class="filters" id="mods-filters">
+              <button class="filter active" data-filter="all">Все</button>
+              <button class="filter" data-filter="updates">Обновления <span id="count-updates"></span></button>
+              <button class="filter" data-filter="incompatible">Не для этой версии <span id="count-incompatible"></span></button>
+              <button class="filter" data-filter="disabled">Отключённые <span id="count-disabled"></span></button>
+            </div>
+            <div class="toolbar-right">
+              <button class="btn btn-secondary" id="btn-check-updates"><svg class="ic ic-sm"><use href="#i-refresh"/></svg>Проверить обновления</button>
+              <button class="btn btn-primary hidden" id="btn-update-all"><svg class="ic ic-sm"><use href="#i-download"/></svg><span>Обновить все</span></button>
+              <button class="icon-btn" id="btn-open-mods-dir" title="Открыть папку mods"><svg class="ic"><use href="#i-folder"/></svg></button>
+              <button class="icon-btn" id="btn-add-mod" title="Добавить .jar с диска"><svg class="ic"><use href="#i-plus"/></svg></button>
+            </div>
+          </div>
+          <div class="scan-status muted small" id="mods-scan-status"></div>
+          <div class="table" id="mods-list"></div>
+        </div>
+
+        <div class="view" id="view-mods-modrinth">
+          <div class="toolbar">
+            <div class="search grow">
+              <svg class="ic ic-sm"><use href="#i-search"/></svg>
+              <input type="text" id="modrinth-search-input" placeholder="Поиск модов на Modrinth">
+            </div>
+            <div class="toolbar-right">
+              <select id="modrinth-category-filter" class="select">
+                <option value="">Все категории</option>
+                <option value="optimization">Оптимизация</option>
+                <option value="utility">Утилиты</option>
+                <option value="decoration">Декор</option>
+                <option value="adventure">Приключения</option>
+                <option value="technology">Технологии</option>
+                <option value="library">Библиотеки</option>
+              </select>
+              <select id="modrinth-sort-filter" class="select">
+                <option value="relevance">По релевантности</option>
+                <option value="downloads">По загрузкам</option>
+                <option value="follows">По подпискам</option>
+                <option value="updated">Недавно обновлённые</option>
+              </select>
+            </div>
+          </div>
+          <div class="scan-status muted small" id="modrinth-context"></div>
+          <div class="table" id="modrinth-results"></div>
+        </div>
+
+        <div class="drop-overlay hidden" id="drop-overlay">
+          <svg class="ic ic-xl"><use href="#i-upload"/></svg>
+          <div>Отпустите .jar, чтобы добавить в сборку</div>
+        </div>
+      </section>
+
+      <!-- ============ SETTINGS ============ -->
+      <section class="page" id="page-settings">
+        <div class="page-head"><h1>Настройки</h1></div>
+
+        <div class="settings">
+          <h2 class="group-title">Оформление</h2>
+          <div class="group themes">
+            <div class="themes-row">
+              <div class="themes-label">Тёмные</div>
+              <div class="themes-grid" id="themes-dark"></div>
+            </div>
+            <div class="themes-row">
+              <div class="themes-label">Светлые</div>
+              <div class="themes-grid" id="themes-light"></div>
+            </div>
+          </div>
+
+          <h2 class="group-title">Игра</h2>
+          <div class="group">
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Максимум памяти</div>
+                <div class="setting-hint">Для ванилы хватит 4 ГБ, для больших сборок — 6–8 ГБ. <span id="system-ram-total"></span></div>
+              </div>
+              <div class="setting-control slider-control">
+                <input type="range" id="slider-max-ram" min="1" max="32" step="1" value="4" class="range">
+                <b class="slider-value" id="val-max-ram">4 ГБ</b>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Начальная память</div>
+                <div class="setting-hint">Не больше максимума</div>
+              </div>
+              <div class="setting-control slider-control">
+                <input type="range" id="slider-min-ram" min="1" max="16" step="1" value="2" class="range">
+                <b class="slider-value" id="val-min-ram">2 ГБ</b>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Java</div>
+                <div class="setting-hint">«Автоматически» берёт нужную под версию: 8, 17, 21 или 25</div>
+              </div>
+              <div class="setting-control">
+                <select id="select-java" class="select select-wide"></select>
+                <button class="icon-btn" id="btn-rescan-java" title="Найти Java заново"><svg class="ic ic-sm"><use href="#i-refresh"/></svg></button>
+                <button class="btn btn-secondary" id="btn-browse-java">Обзор…</button>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Размер окна</div>
+              </div>
+              <div class="setting-control">
+                <input type="number" id="input-res-w" class="input input-num" min="320" title="Ширина">
+                <span class="muted">×</span>
+                <input type="number" id="input-res-h" class="input input-num" min="240" title="Высота">
+              </div>
+            </div>
+            <label class="setting">
+              <div class="setting-text"><div class="setting-label">Полноэкранный режим</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-fullscreen"><span></span></span></div>
+            </label>
+            <div class="setting setting-stack">
+              <div class="setting-text">
+                <div class="setting-label">Аргументы JVM</div>
+                <div class="setting-hint">Через пробел, без -Xmx/-Xms</div>
+              </div>
+              <input type="text" id="input-jvm-args" class="input mono" placeholder="-XX:+UseG1GC">
+            </div>
+          </div>
+
+          <h2 class="group-title">Лаунчер</h2>
+          <div class="group">
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Папка .minecraft</div>
+                <div class="setting-hint mono-path" id="game-dir-hint"></div>
+              </div>
+              <div class="setting-control">
+                <input type="hidden" id="input-game-dir">
+                <button class="btn btn-secondary" id="btn-browse-gamedir">Изменить</button>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-text"><div class="setting-label">После запуска игры</div></div>
+              <div class="setting-control">
+                <select id="select-launch-action" class="select">
+                  <option value="minimize">Свернуть лаунчер</option>
+                  <option value="hide">Скрыть до выхода из игры</option>
+                  <option value="keep">Ничего не делать</option>
+                </select>
+              </div>
+            </div>
+            <label class="setting">
+              <div class="setting-text"><div class="setting-label">Снапшоты и старые версии в списке</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-snapshots"><span></span></span></div>
+            </label>
+            <label class="setting">
+              <div class="setting-text"><div class="setting-label">Анимации</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-animations"><span></span></span></div>
+            </label>
+            <label class="setting">
+              <div class="setting-text"><div class="setting-label">Вкладка «Консоль»</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-show-console"><span></span></span></div>
+            </label>
+            <label class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Проверять обновления модов в фоне</div>
+                <div class="setting-hint">При запуске и раз в 30 минут, для версии Minecraft каждой сборки</div>
+              </div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-auto-updates"><span></span></span></div>
+            </label>
+          </div>
+
+          <h2 class="group-title">Prism Launcher</h2>
+          <div class="group">
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Импорт сборок</div>
+                <div class="setting-hint">Копирует сборки сюда — дальше они живут отдельно от Prism</div>
+              </div>
+              <div class="setting-control"><button class="btn btn-secondary" id="btn-prism-import">Импортировать…</button></div>
+            </div>
+            <label class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Синхронизация</div>
+                <div class="setting-hint">Сборки Prism видны здесь и запускаются с теми же файлами, без копирования</div>
+              </div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-prism"><span></span></span></div>
+            </label>
+          </div>
+
+          <h2 class="group-title">Перенос настроек игры</h2>
+          <p class="group-hint">Перед запуском сборки лаунчер смотрит, где настройки менялись последними, и переносит их. Ресурспаки, серверы и конфиги модов не трогаются, прежний options.txt сохраняется рядом как .mcl-backup.</p>
+          <div class="group" id="sync-rows"></div>
+        </div>
+      </section>
+
+      <!-- ============ LOGS ============ -->
+      <section class="page page-logs" id="page-logs">
+        <div class="page-head">
+          <h1>Консоль</h1>
+          <div class="toolbar-right">
+            <label class="toggle-inline">
+              <span class="switch"><input type="checkbox" id="check-show-debug"><span></span></span>
+              <span>Отладка</span>
+            </label>
+            <button class="btn btn-secondary" id="btn-detach-console"><svg class="ic ic-sm"><use href="#i-external"/></svg>В отдельное окно</button>
+            <button class="icon-btn" id="btn-copy-logs" title="Копировать"><svg class="ic"><use href="#i-copy"/></svg></button>
+            <button class="icon-btn" id="btn-clear-logs" title="Очистить"><svg class="ic"><use href="#i-trash"/></svg></button>
+          </div>
+        </div>
+        <div class="logs" id="logs"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============ FIRST-RUN SETUP ============ -->
+  <div class="setup hidden" id="setup">
+    <div class="setup-card">
+      <div class="setup-progress" id="setup-dots"></div>
+
+      <div class="setup-body">
+        <!-- 1. welcome -->
+        <section class="setup-step" data-step="welcome">
+          <svg class="setup-logo logo"><use href="#i-logo"/></svg>
+          <h1>Добро пожаловать в AeterMC</h1>
+          <p>Пара минут настройки: аккаунт, оформление, Java и сборки. Всё это можно поменять потом в настройках.</p>
+        </section>
+
+        <!-- 2. account -->
+        <section class="setup-step" data-step="account">
+          <h1>Аккаунт</h1>
+          <p>С каким аккаунтом играть. Лицензия Microsoft нужна для официальных серверов и своего скина.</p>
+          <div class="setup-current" id="setup-account-current"></div>
+          <div class="setup-options">
+            <button class="setup-option" id="setup-ms">
+              <svg viewBox="0 0 21 21" class="ms-logo"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/></svg>
+              <span><b>Microsoft</b><small>Лицензионный аккаунт</small></span>
+            </button>
+            <button class="setup-option" id="setup-ely">
+              <svg class="ic"><use href="#i-user"/></svg>
+              <span><b>Ely.by</b><small>Бесплатные скины</small></span>
+            </button>
+          </div>
+          <div class="setup-offline">
+            <label class="field-label" for="setup-offline-name">Или без входа — только ник</label>
+            <div class="input-row">
+              <input type="text" id="setup-offline-name" class="input grow" placeholder="Steve" maxlength="16">
+              <button class="btn btn-secondary" id="setup-offline-add">Добавить</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. theme -->
+        <section class="setup-step" data-step="theme">
+          <h1>Оформление</h1>
+          <p>Выберите тему. Она применяется сразу.</p>
+          <div class="setup-themes">
+            <div class="themes-label">Тёмные</div>
+            <div class="themes-grid" id="setup-themes-dark"></div>
+            <div class="themes-label">Светлые</div>
+            <div class="themes-grid" id="setup-themes-light"></div>
+          </div>
+        </section>
+
+        <!-- 4. java -->
+        <section class="setup-step" data-step="java">
+          <h1>Java</h1>
+          <p>Каждой версии Minecraft нужна своя Java. Недостающую лаунчер скачает сам (Eclipse Temurin) и положит в свою папку.</p>
+          <div class="setup-list" id="setup-java-list"></div>
+          <button class="btn btn-secondary hidden" id="setup-java-all"><svg class="ic ic-sm"><use href="#i-download"/></svg>Скачать недостающую</button>
+        </section>
+
+        <!-- 5. prism -->
+        <section class="setup-step" data-step="prism">
+          <h1>Сборки Prism Launcher</h1>
+          <p id="setup-prism-text"></p>
+          <div class="setup-options setup-options-col">
+            <button class="setup-option" data-prism="copy">
+              <svg class="ic"><use href="#i-copy"/></svg>
+              <span><b>Импортировать</b><small>Скопировать сюда, дальше они живут отдельно</small></span>
+            </button>
+            <button class="setup-option" data-prism="sync">
+              <svg class="ic"><use href="#i-link"/></svg>
+              <span><b>Синхронизировать</b><small>Оставить в Prism и запускать отсюда с теми же файлами</small></span>
+            </button>
+            <button class="setup-option" data-prism="skip">
+              <svg class="ic"><use href="#i-x"/></svg>
+              <span><b>Не нужно</b><small>Можно включить потом в настройках</small></span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 6. memory -->
+        <section class="setup-step" data-step="memory">
+          <h1>Память для игры</h1>
+          <p id="setup-ram-text"></p>
+          <div class="setup-ram">
+            <input type="range" id="setup-ram" min="2" max="16" step="1" value="6" class="range">
+            <b id="setup-ram-value">6 ГБ</b>
+          </div>
+          <p class="hint">Для ванилы хватит 4 ГБ, для больших сборок — 6–8 ГБ.</p>
+        </section>
+
+        <!-- 7. done -->
+        <section class="setup-step" data-step="done">
+          <div class="setup-done-icon"><svg class="ic"><use href="#i-check"/></svg></div>
+          <h1>Всё готово</h1>
+          <p>Настройку можно пройти заново: запустите лаунчер с аргументом <code>--setup</code>.</p>
+        </section>
+      </div>
+
+      <div class="setup-foot">
+        <button class="btn btn-ghost" id="setup-skip">Пропустить настройку</button>
+        <div class="grow"></div>
+        <button class="btn btn-secondary" id="setup-back">Назад</button>
+        <button class="btn btn-primary" id="setup-next">Начать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: ACCOUNTS ============ -->
+  <div class="modal hidden" id="modal-accounts">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Аккаунты</h3>
+        <button class="icon-btn" data-close-modal><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="account-list" id="account-list"></div>
+
+        <div class="field-label spaced">Добавить аккаунт</div>
+        <div class="segmented segmented-full" id="acc-seg">
+          <button class="active" data-view="acc-offline">Оффлайн</button>
+          <button data-view="acc-ms">Microsoft</button>
+          <button data-view="acc-ely">Ely.by</button>
+        </div>
+
+        <div class="view active" id="acc-offline">
+          <label class="field-label" for="input-acc-offline-name">Никнейм</label>
+          <div class="input-row">
+            <input type="text" id="input-acc-offline-name" class="input grow" placeholder="Steve" maxlength="16">
+            <button class="btn btn-primary" id="btn-add-offline-acc">Добавить</button>
+          </div>
+          <p class="hint">3–16 символов: латиница, цифры и «_».</p>
+        </div>
+
+        <div class="view" id="acc-ms">
+          <p class="hint">Лицензионный аккаунт: игра на любых серверах и ваш скин.</p>
+          <button class="btn btn-ms" id="btn-login-ms">
+            <svg viewBox="0 0 21 21" class="ms-logo"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/></svg>
+            <span>Войти через Microsoft</span>
+          </button>
+        </div>
+
+        <div class="view" id="acc-ely">
+          <p class="hint">Бесплатные скины Ely.by. authlib-injector подключается автоматически.</p>
+          <label class="field-label" for="input-acc-ely-login">Логин или email</label>
+          <input type="text" id="input-acc-ely-login" class="input" autocomplete="username">
+          <label class="field-label" for="input-acc-ely-pass">Пароль</label>
+          <input type="password" id="input-acc-ely-pass" class="input" autocomplete="current-password">
+          <div class="form-status" id="ely-status"></div>
+          <button class="btn btn-primary btn-block" id="btn-login-ely">Войти в Ely.by</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: BUILD ICON ============ -->
+  <div class="modal hidden" id="modal-icon">
+    <div class="modal-box modal-sm">
+      <div class="modal-head">
+        <h3>Иконка сборки</h3>
+        <button class="icon-btn" data-close-modal><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="icon-picker-head">
+          <div id="icon-picker-preview"></div>
+          <div class="grow">
+            <div class="icon-picker-name" id="icon-picker-name"></div>
+            <div class="icon-picker-actions">
+              <button class="btn btn-secondary btn-sm" id="icon-picker-upload"><svg class="ic ic-xs"><use href="#i-upload"/></svg>Своя картинка…</button>
+              <button class="btn btn-secondary btn-sm" id="icon-picker-reset">Сбросить</button>
+            </div>
+          </div>
+        </div>
+        <div class="field-label spaced" id="icon-picker-blocks-label">Блоки</div>
+        <div class="icon-picker-grid" id="icon-picker-grid"></div>
+        <p class="hint hidden" id="icon-picker-prism">Сборка из Prism Launcher: картинка сохранится и в Prism. Блоки AeterMC там недоступны.</p>
+        <p class="hint">PNG или JPG, лучше квадратная — иначе обрежется по центру.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: NEW INSTANCE ============ -->
+  <div class="modal hidden" id="modal-instance">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Новая сборка</h3>
+        <button class="icon-btn" data-close-modal><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <label class="field-label" for="input-inst-name">Название</label>
+        <input type="text" id="input-inst-name" class="input" placeholder="Моя сборка" maxlength="48">
+
+        <label class="field-label" for="select-inst-version">Версия Minecraft</label>
+        <select id="select-inst-version" class="select"></select>
+
+        <label class="field-label">Загрузчик модов</label>
+        <div class="segmented segmented-full" id="inst-loader-seg">
+          <button class="active" data-loader="vanilla">Без модов</button>
+          <button data-loader="fabric">Fabric</button>
+        </div>
+        <p class="hint">Каждая сборка хранит свои моды, миры и настройки отдельно. Версии и библиотеки общие — повторно не скачиваются.</p>
+        <div class="form-status" id="inst-status"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" data-close-modal>Отмена</button>
+        <button class="btn btn-primary" id="btn-create-instance">Создать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: MICROSOFT LOGIN ============ -->
+  <div class="modal hidden" id="modal-ms">
+    <div class="modal-box modal-sm">
+      <div class="modal-head">
+        <h3>Вход в аккаунт Microsoft</h3>
+        <button class="icon-btn" id="ms-close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body ms-body">
+        <button class="btn btn-ms" id="ms-browser" disabled>
+          <svg viewBox="0 0 21 21" class="ms-logo"><path fill="#f25022" d="M1 1h9v9H1z"/><path fill="#00a4ef" d="M1 11h9v9H1z"/><path fill="#7fba00" d="M11 1h9v9h-9z"/><path fill="#ffb900" d="M11 11h9v9h-9z"/></svg>
+          <span>Войти через браузер</span>
+        </button>
+
+        <div class="ms-or"><span>или</span></div>
+
+        <div class="ms-qr" id="ms-qr"><div class="ms-qr-loading"></div></div>
+        <div class="ms-code-row">
+          <span class="ms-code" id="ms-code">········</span>
+          <button class="icon-btn" id="ms-copy" title="Скопировать код"><svg class="ic"><use href="#i-copy"/></svg></button>
+        </div>
+        <p class="ms-hint">Откройте <a href="#" id="ms-link">microsoft.com/link</a> или отсканируйте QR-код телефоном и введите код выше.</p>
+
+        <div class="ms-status" id="ms-status"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary hidden" id="ms-retry">Получить новый код</button>
+        <button class="btn btn-secondary" id="ms-cancel">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: OPTIONS TRANSFER ============ -->
+  <div class="modal hidden" id="modal-sync">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Перенос настроек</h3>
+        <button class="icon-btn" id="sync-close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p id="sync-text"></p>
+        <div id="sync-source-wrap">
+          <label class="field-label" for="select-sync-source">Откуда</label>
+          <select id="select-sync-source" class="select"></select>
+        </div>
+        <div class="field-label spaced">Что перенести</div>
+        <div class="sync-checks" id="sync-checks"></div>
+        <div class="form-status" id="sync-status"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="sync-skip">Не переносить</button>
+        <button class="btn btn-primary" id="sync-apply">Перенести</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: PRISM IMPORT ============ -->
+  <div class="modal hidden" id="modal-prism">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Импорт из Prism Launcher</h3>
+        <button class="icon-btn" id="prism-close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p>Выбранные сборки будут скопированы вместе с модами, мирами и настройками. В Prism Launcher они останутся как были.</p>
+        <div class="sync-checks prism-list" id="prism-list"></div>
+        <div class="prism-progress hidden" id="prism-progress">
+          <div class="progress-labels"><span id="prism-progress-text"></span><span id="prism-progress-percent"></span></div>
+          <div class="progress-track"><div class="progress-fill" id="prism-progress-fill"></div></div>
+        </div>
+        <div class="form-status" id="prism-status"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="prism-cancel">Отмена</button>
+        <button class="btn btn-primary" id="prism-start">Скопировать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: CONFIRM / PROMPT ============ -->
+  <div class="modal hidden" id="modal-dialog">
+    <div class="modal-box modal-sm">
+      <div class="modal-head"><h3 id="dialog-title"></h3></div>
+      <div class="modal-body">
+        <p id="dialog-text"></p>
+        <input type="text" id="dialog-input" class="input hidden">
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="dialog-cancel">Отмена</button>
+        <button class="btn btn-secondary hidden" id="dialog-extra"></button>
+        <button class="btn btn-primary" id="dialog-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SCREENSHOT VIEWER ============ -->
+  <div class="viewer hidden" id="viewer">
+    <div class="viewer-top">
+      <div class="viewer-info">
+        <div class="viewer-name" id="viewer-name"></div>
+        <div class="viewer-sub" id="viewer-sub"></div>
+      </div>
+      <button class="icon-btn" id="viewer-copy" title="Копировать картинку"><svg class="ic"><use href="#i-copy"/></svg></button>
+      <button class="icon-btn" id="viewer-reveal" title="Показать в папке"><svg class="ic"><use href="#i-folder"/></svg></button>
+      <button class="icon-btn danger" id="viewer-delete" title="В корзину"><svg class="ic"><use href="#i-trash"/></svg></button>
+      <button class="icon-btn" id="viewer-close" title="Закрыть (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="viewer-stage">
+      <button class="viewer-nav viewer-prev" id="viewer-prev" title="Предыдущий (←)"><svg class="ic ic-flip"><use href="#i-chevron"/></svg></button>
+      <img id="viewer-img" alt="">
+      <button class="viewer-nav viewer-next" id="viewer-next" title="Следующий (→)"><svg class="ic"><use href="#i-chevron"/></svg></button>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="themes.js"></script>
+  <script src="log-view.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

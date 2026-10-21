@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self' file: 'unsafe-inline'; script-src 'self' file:">
+  <title>Установка AeterMC</title>
+  <script src="../renderer/theme-init.js"></script>
+  <link rel="stylesheet" href="../renderer/tokens.css">
+  <link rel="stylesheet" href="../renderer/style.css">
+  <link rel="stylesheet" href="installer.css">
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-logo" viewBox="500 500 1048 1048"><g fill-opacity="1"> <polygon points="1024,502 953,728 1024,868 1095,728" /> <polygon points="875,603 533,1382 690,1333 746,1207 953,728" /> <polygon points="1173,603 1095,728 1302,1207 1358,1333 1515,1382" /> <polygon points="923,1101 746,1207 1302,1207 1125,1101" /> </g> <g fill-opacity="0.82"> <polygon points="1024,502 875,603 953,728" /> <polygon points="1024,502 1095,728 1173,603" /> <polygon points="953,728 746,1207 923,1101 1024,868" /> <polygon points="1095,728 1024,868 1125,1101 1302,1207" /> <polygon points="746,1207 690,1333 761,1471 833,1310" /> <polygon points="533,1382 599,1546 690,1333" /> <polygon points="1302,1207 1215,1310 1287,1471 1358,1333" /> <polygon points="1515,1382 1358,1333 1449,1546" /> </g> <g fill-opacity="0.65"> <polygon points="746,1207 833,1310 1215,1310 1302,1207" /> <polygon points="690,1333 599,1546 761,1471" /> <polygon points="1358,1333 1287,1471 1449,1546" /> </g></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5z" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20zM12 10v4M12 17h.01"/></symbol>
+      <symbol id="i-desktop" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+      <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+    </defs>
+  </svg>
+
+  <header class="titlebar">
+    <div class="titlebar-drag"></div>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="btn-minimize" title="Свернуть">
+        <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
+      </button>
+      <button class="titlebar-btn titlebar-close" id="btn-close" title="Закрыть">
+        <svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="setup-app">
+    <!-- left: brand and steps, like the launcher's sidebar -->
+    <aside class="setup-side">
+      <div class="setup-brand">
+        <svg class="setup-brand-logo logo"><use href="#i-logo"/></svg>
+        <div>
+          <div class="setup-brand-name">AeterMC</div>
+          <div class="setup-brand-ver" id="version"></div>
+        </div>
+      </div>
+      <nav class="setup-steps" id="steps"></nav>
+      <div class="setup-side-foot" id="side-foot"></div>
+    </aside>
+
+    <main class="setup-main">
+      <!-- install: options -->
+      <section class="screen" data-screen="options">
+        <h1 id="options-title">Установка AeterMC</h1>
+        <p class="lead" id="options-lead">Лаунчер Minecraft: Java Edition со сборками, модами с Modrinth и аккаунтами Microsoft и Ely.by.</p>
+
+        <label class="field-label" for="dir">Папка установки</label>
+        <div class="input-row">
+          <input type="text" id="dir" class="input grow mono" spellcheck="false">
+          <button class="btn btn-secondary" id="browse"><svg class="ic ic-sm"><use href="#i-folder"/></svg>Обзор</button>
+        </div>
+
+        <div class="opt-list">
+          <label class="opt">
+            <span class="opt-icon"><svg class="ic"><use href="#i-desktop"/></svg></span>
+            <span class="grow"><b>Ярлык на рабочем столе</b></span>
+            <span class="switch"><input type="checkbox" id="opt-desktop" checked><span></span></span>
+          </label>
+          <label class="opt">
+            <span class="opt-icon"><svg class="ic"><use href="#i-grid"/></svg></span>
+            <span class="grow"><b>Ярлык в меню «Пуск»</b></span>
+            <span class="switch"><input type="checkbox" id="opt-start" checked><span></span></span>
+          </label>
+        </div>
+
+        <div class="notice hidden" id="running-notice">
+          <svg class="ic"><use href="#i-alert"/></svg>
+          <span class="grow">AeterMC сейчас запущен. Закройте его, чтобы продолжить.</span>
+          <button class="btn btn-sm btn-secondary" id="kill">Закрыть AeterMC</button>
+        </div>
+      </section>
+
+      <!-- uninstall: confirm -->
+      <section class="screen" data-screen="confirm">
+        <h1>Удаление AeterMC</h1>
+        <p class="lead">Лаунчер будет удалён вместе с ярлыками. Папка: <code id="uninstall-dir"></code></p>
+
+        <div class="opt-list">
+          <label class="opt">
+            <span class="opt-icon"><svg class="ic"><use href="#i-database"/></svg></span>
+            <span class="grow">
+              <b>Удалить и данные лаунчера</b>
+              <small>Сборки, миры в них, аккаунты, настройки и скачанная Java. Общая папка .minecraft не трогается.</small>
+            </span>
+            <span class="switch"><input type="checkbox" id="opt-data"><span></span></span>
+          </label>
+        </div>
+
+        <div class="notice hidden" id="running-notice-u">
+          <svg class="ic"><use href="#i-alert"/></svg>
+          <span class="grow">AeterMC сейчас запущен. Закройте его, чтобы продолжить.</span>
+          <button class="btn btn-sm btn-secondary" id="kill-u">Закрыть AeterMC</button>
+        </div>
+      </section>
+
+      <!-- progress (both modes) -->
+      <section class="screen" data-screen="progress">
+        <div class="progress-hero">
+          <div class="spinner-logo"><svg class="logo"><use href="#i-logo"/></svg></div>
+          <h1 id="progress-title">Установка…</h1>
+          <p class="lead" id="progress-stage">Подготовка</p>
+        </div>
+        <div class="progress active">
+          <div class="progress-labels">
+            <span class="file mono" id="progress-file"></span>
+            <span id="progress-pct"></span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        </div>
+      </section>
+
+      <!-- done (both modes) -->
+      <section class="screen" data-screen="done">
+        <div class="done-hero">
+          <div class="setup-done-icon"><svg class="ic"><use href="#i-check"/></svg></div>
+          <h1 id="done-title">AeterMC установлен</h1>
+          <p class="lead" id="done-text"></p>
+        </div>
+      </section>
+
+      <!-- error (both modes) -->
+      <section class="screen" data-screen="error">
+        <div class="done-hero">
+          <div class="setup-done-icon error"><svg class="ic"><use href="#i-x"/></svg></div>
+          <h1 id="error-title">Не получилось установить</h1>
+          <p class="lead" id="error-text"></p>
+        </div>
+      </section>
+
+      <footer class="setup-foot">
+        <span class="muted-2 small" id="foot-note"></span>
+        <div class="grow"></div>
+        <button class="btn btn-ghost" id="secondary"></button>
+        <button class="btn btn-primary" id="primary"></button>
+      </footer>
+    </main>
+  </div>
+
+  <script src="installer.js"></script>
+</body>
+</html>

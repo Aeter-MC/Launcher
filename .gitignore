@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output (electron-builder, installer splash) and binaries
+dist/
+installer/build/
+*.exe
+*.blockmap
+
+# Logs
+*.log
+npm-debug.log*
+
+# Secrets
+.env
+.env.*
+
+# OS / editors
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Personal Claude Code / tool configs
+.claude/
+.mcp.json
+
+# Browser preview of the screens: a local dev tool
+preview/

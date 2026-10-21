@@ -1,0 +1,226 @@
+[
+  {
+    "id": "dark-purple",
+    "name": "Фиолетовая",
+    "mode": "dark",
+    "preview": {
+      "bg": "#131115",
+      "side": "#0e0d0f",
+      "surface": "#19171c",
+      "line": "#28252c",
+      "text": "#e8e6ea",
+      "muted": "#6d6873",
+      "accent": "#a07cf0"
+    }
+  },
+  {
+    "id": "dark-blue",
+    "name": "Синяя",
+    "mode": "dark",
+    "preview": {
+      "bg": "#111315",
+      "side": "#0d0e0f",
+      "surface": "#17191c",
+      "line": "#25282c",
+      "text": "#e6e8ea",
+      "muted": "#686c73",
+      "accent": "#5b9cf5"
+    }
+  },
+  {
+    "id": "dark-red",
+    "name": "Красная",
+    "mode": "dark",
+    "preview": {
+      "bg": "#151112",
+      "side": "#0f0d0d",
+      "surface": "#1c1717",
+      "line": "#2c2525",
+      "text": "#eae6e6",
+      "muted": "#736869",
+      "accent": "#ef6461"
+    }
+  },
+  {
+    "id": "dark-green",
+    "name": "Зелёная",
+    "mode": "dark",
+    "preview": {
+      "bg": "#121511",
+      "side": "#0d0f0d",
+      "surface": "#181c17",
+      "line": "#262c25",
+      "text": "#e7eae6",
+      "muted": "#6a7368",
+      "accent": "#62b856"
+    }
+  },
+  {
+    "id": "dark-pink",
+    "name": "Розовая",
+    "mode": "dark",
+    "preview": {
+      "bg": "#151113",
+      "side": "#0f0d0e",
+      "surface": "#1c171a",
+      "line": "#2c2529",
+      "text": "#eae6e8",
+      "muted": "#73686e",
+      "accent": "#ee76b6"
+    }
+  },
+  {
+    "id": "dark-yellow",
+    "name": "Жёлтая",
+    "mode": "dark",
+    "preview": {
+      "bg": "#151411",
+      "side": "#0f0f0d",
+      "surface": "#1c1b17",
+      "line": "#2c2b25",
+      "text": "#eae9e6",
+      "muted": "#737168",
+      "accent": "#e8c547"
+    }
+  },
+  {
+    "id": "dark-orange",
+    "name": "Оранжевая",
+    "mode": "dark",
+    "preview": {
+      "bg": "#151311",
+      "side": "#0f0e0d",
+      "surface": "#1c1917",
+      "line": "#2c2825",
+      "text": "#eae8e6",
+      "muted": "#736d68",
+      "accent": "#f28d45"
+    }
+  },
+  {
+    "id": "dark-mono",
+    "name": "Монотонная",
+    "mode": "dark",
+    "preview": {
+      "bg": "#252522",
+      "side": "#1d1d1b",
+      "surface": "#2e2e2b",
+      "line": "#403f3b",
+      "text": "#f5f3ec",
+      "muted": "#87847b",
+      "accent": "#ece9df"
+    }
+  },
+  {
+    "id": "light-purple",
+    "name": "Фиолетовая",
+    "mode": "light",
+    "preview": {
+      "bg": "#f8f7fa",
+      "side": "#f1eef3",
+      "surface": "#ffffff",
+      "line": "#e2dfe7",
+      "text": "#1e1a23",
+      "muted": "#837d8c",
+      "accent": "#7347d6"
+    }
+  },
+  {
+    "id": "light-blue",
+    "name": "Синяя",
+    "mode": "light",
+    "preview": {
+      "bg": "#f7f8fa",
+      "side": "#eef0f3",
+      "surface": "#ffffff",
+      "line": "#dfe2e7",
+      "text": "#1a1d23",
+      "muted": "#7d838c",
+      "accent": "#2563d9"
+    }
+  },
+  {
+    "id": "light-red",
+    "name": "Красная",
+    "mode": "light",
+    "preview": {
+      "bg": "#faf7f8",
+      "side": "#f3eeef",
+      "surface": "#ffffff",
+      "line": "#e7dfdf",
+      "text": "#231a1b",
+      "muted": "#8c7d7e",
+      "accent": "#d33434"
+    }
+  },
+  {
+    "id": "light-green",
+    "name": "Зелёная",
+    "mode": "light",
+    "preview": {
+      "bg": "#f8faf7",
+      "side": "#eff3ee",
+      "surface": "#ffffff",
+      "line": "#e0e7df",
+      "text": "#1c231a",
+      "muted": "#808c7d",
+      "accent": "#24802a"
+    }
+  },
+  {
+    "id": "light-pink",
+    "name": "Розовая",
+    "mode": "light",
+    "preview": {
+      "bg": "#faf7f9",
+      "side": "#f3eef1",
+      "surface": "#ffffff",
+      "line": "#e7dfe3",
+      "text": "#231a1f",
+      "muted": "#8c7d85",
+      "accent": "#cf3a88"
+    }
+  },
+  {
+    "id": "light-yellow",
+    "name": "Жёлтая",
+    "mode": "light",
+    "preview": {
+      "bg": "#faf9f7",
+      "side": "#f3f2ee",
+      "surface": "#ffffff",
+      "line": "#e7e5df",
+      "text": "#23211a",
+      "muted": "#8c897d",
+      "accent": "#e0b10f"
+    }
+  },
+  {
+    "id": "light-orange",
+    "name": "Оранжевая",
+    "mode": "light",
+    "preview": {
+      "bg": "#faf8f7",
+      "side": "#f3f0ee",
+      "surface": "#ffffff",
+      "line": "#e7e2df",
+      "text": "#231e1a",
+      "muted": "#8c837d",
+      "accent": "#e06a17"
+    }
+  },
+  {
+    "id": "light-mono",
+    "name": "Монотонная",
+    "mode": "light",
+    "preview": {
+      "bg": "#faf9f5",
+      "side": "#f2f0e8",
+      "surface": "#ffffff",
+      "line": "#e6e3d8",
+      "text": "#1f1e1c",
+      "muted": "#8c8980",
+      "accent": "#1f1e1c"
+    }
+  }
+]

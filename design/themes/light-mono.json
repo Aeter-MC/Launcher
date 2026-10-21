@@ -1,0 +1,236 @@
+{
+  "$description": "Светлая монотонная тема. Переопределяет цвета и тени из tokens.json.",
+  "$extensions": {
+    "mcl.theme": {
+      "id": "light-mono",
+      "name": "Монотонная",
+      "mode": "light",
+      "order": 7
+    }
+  },
+  "color": {
+    "bg": {
+      "$value": "#faf9f5"
+    },
+    "bg-side": {
+      "$value": "#f2f0e8"
+    },
+    "surface": {
+      "$value": "#ffffff"
+    },
+    "surface-2": {
+      "$value": "#f5f3ec"
+    },
+    "hover": {
+      "$value": "#ece9df"
+    },
+    "input": {
+      "$value": "#ffffff"
+    },
+    "line": {
+      "$value": "#e6e3d8"
+    },
+    "line-strong": {
+      "$value": "#d4d0c3"
+    },
+    "scrollbar": {
+      "$value": "#d4d0c3"
+    },
+    "scrollbar-hover": {
+      "$value": "#b9b5a8"
+    },
+    "text": {
+      "$value": "#1f1e1c"
+    },
+    "text-2": {
+      "$value": "#5e5c55"
+    },
+    "text-3": {
+      "$value": "#8c8980"
+    },
+    "accent": {
+      "$value": "#1f1e1c"
+    },
+    "accent-hover": {
+      "$value": "#3a3935"
+    },
+    "accent-ink": {
+      "$value": "#ffffff"
+    },
+    "accent-text": {
+      "$value": "#1f1e1c"
+    },
+    "accent-soft": {
+      "$value": "#1f1e1c1a"
+    },
+    "accent-border": {
+      "$value": "#1f1e1c8c"
+    },
+    "update": {
+      "$value": "#2563d9"
+    },
+    "update-soft": {
+      "$value": "#2563d91a"
+    },
+    "update-soft-hover": {
+      "$value": "#2563d92b"
+    },
+    "warn": {
+      "$value": "#946000"
+    },
+    "warn-soft": {
+      "$value": "#d99a1a29"
+    },
+    "danger": {
+      "$value": "#cc2f2f"
+    },
+    "danger-soft": {
+      "$value": "#cc2f2f17"
+    },
+    "danger-soft-hover": {
+      "$value": "#cc2f2f26"
+    },
+    "danger-border": {
+      "$value": "#cc2f2f73"
+    },
+    "danger-text": {
+      "$value": "#a11d1d"
+    },
+    "switch-knob": {
+      "$value": "#ffffff"
+    },
+    "overlay": {
+      "$value": "#1a1a1a52"
+    },
+    "drop-overlay": {
+      "$value": "#faf9f5eb"
+    },
+    "toast": {
+      "$value": "#ffffff"
+    },
+    "log": {
+      "bg": {
+        "$value": "#fdfcf9"
+      },
+      "text": {
+        "$value": "#434137"
+      },
+      "info": {
+        "$value": "#2e7d32"
+      },
+      "error": {
+        "$value": "#c62828"
+      },
+      "debug": {
+        "$value": "#a4a298"
+      }
+    },
+    "ms-button": {
+      "bg": {
+        "$value": "#f2f2f2"
+      },
+      "bg-hover": {
+        "$value": "#e6e6e6"
+      },
+      "text": {
+        "$value": "#1b1b1b"
+      },
+      "spinner-track": {
+        "$value": "#dddddd"
+      }
+    },
+    "$type": "color",
+    "block": {
+      "grass": {
+        "tile": {
+          "$value": "#dff1d5"
+        }
+      },
+      "stone": {
+        "tile": {
+          "$value": "#e9e9e9"
+        }
+      },
+      "sand": {
+        "tile": {
+          "$value": "#faf7eb"
+        }
+      },
+      "planks": {
+        "tile": {
+          "$value": "#f2e9dc"
+        }
+      },
+      "snow": {
+        "tile": {
+          "$value": "#fdfdfe"
+        }
+      },
+      "diamond": {
+        "tile": {
+          "$value": "#e6e6e6"
+        }
+      },
+      "netherrack": {
+        "tile": {
+          "$value": "#e9d5d5"
+        }
+      },
+      "end-stone": {
+        "tile": {
+          "$value": "#fafbec"
+        }
+      },
+      "obsidian": {
+        "tile": {
+          "$value": "#d4d1da"
+        }
+      },
+      "copper": {
+        "tile": {
+          "$value": "#f8e5d8"
+        }
+      },
+      "ice": {
+        "tile": {
+          "$value": "#ecf6fd"
+        }
+      },
+      "moss": {
+        "tile": {
+          "$value": "#dadfd4"
+        }
+      }
+    }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "modal": {
+      "$value": {
+        "color": "#0000002e",
+        "offsetX": "0px",
+        "offsetY": "16px",
+        "blur": "48px",
+        "spread": "0px"
+      }
+    },
+    "toast": {
+      "$value": {
+        "color": "#00000024",
+        "offsetX": "0px",
+        "offsetY": "8px",
+        "blur": "24px",
+        "spread": "0px"
+      }
+    },
+    "knob": {
+      "$value": {
+        "color": "#00000040",
+        "offsetX": "0px",
+        "offsetY": "1px",
+        "blur": "2px",
+        "spread": "0px"
+      }
+    }
+  }
+}

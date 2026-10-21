@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Консоль — AeterMC</title>
+  <script src="theme-init.js"></script>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="console-window">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 4 4H6l4-4zM12 14v7"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="console-toolbar">
+    <label class="toggle-row toggle-inline">
+      <span>Отладка</span>
+      <span class="switch"><input type="checkbox" id="check-show-debug"><span></span></span>
+    </label>
+    <label class="toggle-row toggle-inline">
+      <span>Поверх окон</span>
+      <span class="switch"><input type="checkbox" id="check-on-top"><span></span></span>
+    </label>
+    <div class="grow"></div>
+    <button class="btn btn-secondary btn-sm" id="btn-copy-logs"><svg class="ic ic-sm"><use href="#i-copy"/></svg>Копировать</button>
+    <button class="btn btn-secondary btn-sm" id="btn-clear-logs"><svg class="ic ic-sm"><use href="#i-trash"/></svg>Очистить</button>
+  </div>
+  <div class="logs" id="logs"></div>
+
+  <script src="log-view.js"></script>
+  <script src="console.js"></script>
+</body>
+</html>
