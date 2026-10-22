@@ -5,3 +5,5 @@
 Лаунчер для Minecraft: Java Edition.
 
 **Сайт:** [aeter.waruk.xyz](https://aeter.waruk.xyz)
+
+Лаунчер нацелен на понятность и красоту интерфейса.
