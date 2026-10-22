@@ -70,6 +70,10 @@ h1, h2, h3 { font-weight: 600; }
 .titlebar-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.1; }
 .titlebar-btn:hover { background: var(--color-hover); color: var(--color-text); }
 .titlebar-close:hover { background: var(--color-titlebar-close); color: var(--color-white); }
+.titlebar-update { width: auto; display: flex; align-items: center; gap: 6px; padding: 0 12px; color: var(--color-accent); font-size: var(--font-size-xs); font-weight: 600; }
+.titlebar-update svg.ic { width: 14px; height: 14px; stroke-width: 2; }
+.titlebar-update:disabled { cursor: default; color: var(--color-text-2); }
+.titlebar-update:disabled:hover { background: none; color: var(--color-text-2); }
 
 /* ================= LAYOUT ================= */
 .app { flex: 1; display: flex; min-height: 0; }

@@ -98,6 +98,17 @@ contextBridge.exposeInMainWorld('api', {
   closeWindow: () => ipcRenderer.send('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
 
+  // Launcher update
+  getUpdateState: () => ipcRenderer.invoke('update-get-state'),
+  downloadUpdate: () => ipcRenderer.invoke('update-download'),
+  restartToUpdate: () => ipcRenderer.invoke('update-restart'),
+  openUpdatePage: () => ipcRenderer.invoke('update-open-page'),
+  onUpdateState: (callback) => {
+    const handler = (event, state) => callback(state);
+    ipcRenderer.on('update-state', handler);
+    return () => ipcRenderer.removeListener('update-state', handler);
+  },
+
   // Console
   writeLog: (type, message) => ipcRenderer.send('write-log', { type, message }),
   getLogBuffer: () => ipcRenderer.invoke('get-log-buffer'),

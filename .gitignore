@@ -3,6 +3,7 @@ node_modules/
 
 # Build output (electron-builder, installer splash) and binaries
 dist/
+release/
 installer/build/
 *.exe
 *.blockmap

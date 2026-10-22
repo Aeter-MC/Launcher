@@ -35,6 +35,7 @@ const { ElyByManager } = require('./elyby-manager');
 const optionsSync = require('./options-sync');
 const { DiskCache } = require('./disk-cache');
 const { PlaytimeLog } = require('./playtime-log');
+const { Updater } = require('./updater');
 const screenshots = require('./screenshots');
 const https = require('https');
 const axios = require('axios');
@@ -92,6 +93,15 @@ const modrinthManager = new ModrinthManager(diskCache);
 const elyByManager = new ElyByManager(currentSettings.gameDir);
 const launcherCore = new LauncherCore();
 const playtimeLog = new PlaytimeLog(userDataDir);
+// Launcher self-update from GitHub Releases (see updater.js)
+const updater = new Updater({
+  currentVersion: app.getVersion(),
+  electronVersion: process.versions.electron,
+  resourcesDir: process.resourcesPath,
+  exePath: app.getPath('exe'),
+  portable: !!process.env.PORTABLE_EXECUTABLE_FILE,
+  onChange: (state) => sendToWindow('update-state', state)
+});
 
 let javaCache = null;
 // Java the launcher downloaded itself lives here (see java-installer.js)
@@ -234,6 +244,12 @@ ipcMain.handle('console-set-on-top', (event, onTop) => {
 
 app.whenReady().then(() => {
   createWindow();
+
+  // Only a built launcher updates itself; `npm start` runs from the sources
+  if (app.isPackaged) {
+    setTimeout(() => updater.check(), 5000);
+    setInterval(() => updater.check(), 6 * 60 * 60 * 1000);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -754,6 +770,23 @@ ipcMain.handle('get-game-state', () => ({
   instanceId: launcherCore.isRunning ? runningInstanceId : null,
   launching: launchInProgress || !!launcherCore.isLaunching
 }));
+
+// Launcher update: the button left of the window controls
+ipcMain.handle('update-get-state', () => updater.state);
+ipcMain.handle('update-download', () => updater.download());
+ipcMain.handle('update-restart', () => {
+  if (launchInProgress || launcherCore.isRunning || launcherCore.isLaunching) {
+    throw new Error('Сначала закройте игру: лаунчер перезапустится для обновления');
+  }
+  if (!updater.startSwap(true)) return false;
+  app.quit();
+  return true;
+});
+ipcMain.handle('update-open-page', () => {
+  if (updater.state.page) shell.openExternal(updater.state.page);
+});
+// a downloaded update is put in place on exit even without "restart"
+app.on('will-quit', () => updater.startSwap(false));
 
 ipcMain.handle('kill-game', () => {
   return launcherCore.kill();

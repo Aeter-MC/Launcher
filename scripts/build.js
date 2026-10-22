@@ -38,7 +38,8 @@ async function build(config, portableTemplate) {
     };
   }
   try {
-    await builder.build({ targets: Platform.WINDOWS.createTarget(['portable'], Arch.x64), config });
+    // releases are published by .github/workflows/release.yml, never by electron-builder itself
+    await builder.build({ targets: Platform.WINDOWS.createTarget(['portable'], Arch.x64), config, publish: 'never' });
   } finally {
     fse.readFile = readFile;
   }

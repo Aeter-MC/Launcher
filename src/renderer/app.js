@@ -251,6 +251,7 @@ function closeModal(el) { el.closest('.modal').classList.add('hidden'); }
 // ================= INIT =================
 document.addEventListener('DOMContentLoaded', async () => {
   setupWindowControls();
+  setupUpdateButton();
   setupNavigation();
   setupSegmented();
   setupModals();
@@ -292,6 +293,47 @@ function setupWindowControls() {
       ? '<rect x="2" y="4" width="6" height="6" rx="1"/><path d="M4 4V2.5A.5.5 0 0 1 4.5 2H9.5a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-.5.5H8"/>'
       : '<rect x="2" y="2" width="8" height="8" rx="1"/>';
   });
+}
+
+// ================= LAUNCHER UPDATE =================
+// Button left of the window controls; downloading and swapping happen in updater.js
+const UPDATE_MANUAL_HINTS = {
+  portable: 'Портативная версия обновляется новым файлом: откроется страница релиза',
+  electron: 'Эту версию нужно поставить установщиком: откроется страница релиза',
+  readonly: 'Нет доступа к папке лаунчера: скачайте установщик со страницы релиза'
+};
+
+function renderUpdateButton(update = {}) {
+  const btn = $('btn-update');
+  const status = update.status;
+  const views = {
+    available: ['download', update.version, `Доступна версия ${update.version}. Нажмите, чтобы скачать`],
+    downloading: ['download', `${Math.round((update.progress || 0) * 100)}%`, `Скачивается версия ${update.version}…`],
+    ready: ['refresh', 'Перезапустить', `Версия ${update.version} скачана. Перезапустите лаунчер, иначе она установится при следующем выходе`],
+    manual: ['external', update.version, `Доступна версия ${update.version}. ${UPDATE_MANUAL_HINTS[update.reason] || ''}`]
+  };
+  const view = views[status];
+  btn.classList.toggle('hidden', !view);
+  if (!view) return;
+  btn.innerHTML = `${icon(view[0])}<span>${esc(view[1])}</span>`;
+  btn.title = view[2];
+  btn.disabled = status === 'downloading';
+  btn.dataset.status = status;
+}
+
+function setupUpdateButton() {
+  $('btn-update').addEventListener('click', async () => {
+    try {
+      const status = $('btn-update').dataset.status;
+      if (status === 'available') await api.downloadUpdate();
+      else if (status === 'ready') await api.restartToUpdate();
+      else if (status === 'manual') await api.openUpdatePage();
+    } catch (e) {
+      toast(errText(e), 'error', 6000);
+    }
+  });
+  api.onUpdateState(renderUpdateButton);
+  api.getUpdateState().then(renderUpdateButton);
 }
 
 // ================= NAVIGATION =================
