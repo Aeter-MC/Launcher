@@ -2,7 +2,7 @@
 
 ![AeterMC](assets/icon.png)
 
-Лаунчер для Minecraft: Java Edition.
+Лаунчер для Minecraft: Java Edition на Electron.
 
 **Сайт:** [aeter.waruk.xyz](https://aeter.waruk.xyz)
 
