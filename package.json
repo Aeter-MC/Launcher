@@ -1,6 +1,6 @@
 {
   "name": "aetermc",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AeterMC — Minecraft launcher",
   "main": "src/main.js",
   "scripts": {
@@ -13,7 +13,8 @@
     "installer": "electron . --installer",
     "uninstaller": "electron . --uninstall",
     "preview": "node preview/server.js",
-    "icon": "electron scripts/render-icon.js"
+    "icon": "electron scripts/render-icon.js",
+    "i18n": "node scripts/check-i18n.js"
   },
   "keywords": [
     "minecraft",

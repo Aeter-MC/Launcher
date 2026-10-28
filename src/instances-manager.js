@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { t } = require('./i18n/i18n');
 
 const PRISM_INSTANCES_DIR = path.join(process.env.APPDATA || '', 'PrismLauncher', 'instances');
 const PRISM_ICONS_DIR = path.join(process.env.APPDATA || '', 'PrismLauncher', 'icons');
@@ -315,9 +316,9 @@ class InstancesManager {
    */
   async importPrismInstance(key, onProgress) {
     const srcDir = path.join(PRISM_INSTANCES_DIR, key);
-    if (path.dirname(srcDir) !== PRISM_INSTANCES_DIR) throw new Error('Некорректная сборка');
+    if (path.dirname(srcDir) !== PRISM_INSTANCES_DIR) throw new Error(t('Некорректная сборка'));
     const src = this.readInstance(srcDir);
-    if (!src || !src.isPrism) throw new Error('Сборка Prism Launcher не найдена');
+    if (!src || !src.isPrism) throw new Error(t('Сборка Prism Launcher не найдена'));
 
     const slug = (src.name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'instance') + '_' + Date.now().toString(36);
     const destDir = path.join(this.instancesDir, slug);
@@ -357,7 +358,7 @@ class InstancesManager {
       }, null, 2), 'utf-8');
     } catch (e) {
       fs.rmSync(destDir, { recursive: true, force: true });
-      throw new Error(`Не удалось скопировать «${src.name}»: ${e.message}`);
+      throw new Error(t('Не удалось скопировать «{name}»: {error}', { name: src.name, error: e.message }));
     }
 
     if (onProgress) onProgress({ copiedBytes: totalBytes, totalBytes });
@@ -411,7 +412,7 @@ class InstancesManager {
   copyInstance(instanceId, newName) {
     const instances = this.listInstances();
     const source = instances.find(i => i.id === instanceId);
-    if (!source) throw new Error('Инстанс не найден');
+    if (!source) throw new Error(t('Инстанс не найден'));
 
     const safeSlug = (newName.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'instance') + '_' + Date.now().toString(36);
     const destDir = path.join(this.instancesDir, safeSlug);
@@ -442,7 +443,7 @@ class InstancesManager {
     const target = instances.find(i => i.id === instanceId);
     if (!target) return false;
     if (target.isPrism) {
-      throw new Error('Сборки Prism Launcher удаляются из самого Prism Launcher');
+      throw new Error(t('Сборки Prism Launcher удаляются из самого Prism Launcher'));
     }
 
     if (fs.existsSync(target.path)) {
@@ -458,10 +459,10 @@ class InstancesManager {
    */
   setInstanceIcon(instanceId, choice) {
     const target = this.listInstances().find(i => i.id === instanceId);
-    if (!target) throw new Error('Инстанс не найден');
+    if (!target) throw new Error(t('Инстанс не найден'));
 
     if (target.isPrism) {
-      if (choice && !choice.png) throw new Error('Для сборок Prism Launcher можно задать только свою картинку');
+      if (choice && !choice.png) throw new Error(t('Для сборок Prism Launcher можно задать только свою картинку'));
       const cfgPath = path.join(target.path, 'instance.cfg');
       let cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : '[General]\n';
       const key = 'aetermc_' + path.basename(target.path).replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -588,10 +589,10 @@ class InstancesManager {
   toggleInstanceMod(instanceId, fileName, enable) {
     const instances = this.listInstances();
     const target = instances.find(i => i.id === instanceId);
-    if (!target) throw new Error('Инстанс не найден');
+    if (!target) throw new Error(t('Инстанс не найден'));
 
     const currPath = path.join(target.modsDir, fileName);
-    if (!fs.existsSync(currPath)) throw new Error('Мод не найден');
+    if (!fs.existsSync(currPath)) throw new Error(t('Мод не найден'));
 
     let newName;
     if (enable) {
@@ -612,7 +613,7 @@ class InstancesManager {
   addModToInstance(instanceId, sourceFilePath) {
     const instances = this.listInstances();
     const target = instances.find(i => i.id === instanceId);
-    if (!target) throw new Error('Инстанс не найден');
+    if (!target) throw new Error(t('Инстанс не найден'));
 
     this.ensureDir(target.modsDir);
     const dest = path.join(target.modsDir, path.basename(sourceFilePath));

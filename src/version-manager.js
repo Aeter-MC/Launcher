@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const { t } = require('./i18n/i18n');
 
 const MOJANG_MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const FABRIC_META_URL = 'https://meta.fabricmc.net/v2/versions/loader';
@@ -59,7 +60,7 @@ class VersionManager {
       })
       .catch(e => {
         if (this.cachedManifest) return this.cachedManifest;
-        throw new Error(`Не удалось загрузить список версий Minecraft: ${e.message}`);
+        throw new Error(t('Не удалось загрузить список версий Minecraft: {error}', { error: e.message }));
       })
       .finally(() => { this.refreshing = null; });
     return this.refreshing;
@@ -177,7 +178,7 @@ class VersionManager {
     if (!loaderVersion) {
       const loaders = await this.getFabricLoaders(gameVersion);
       if (!loaders || loaders.length === 0) {
-        throw new Error(`Fabric недоступен для версии Minecraft ${gameVersion}`);
+        throw new Error(t('Fabric недоступен для версии Minecraft {version}', { version: gameVersion }));
       }
       loaderVersion = loaders[0].loader.version;
     }

@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { safeStorage } = require('electron');
 const { MicrosoftAuth, toMclcAuth } = require('./microsoft-auth');
 const { ElyByManager } = require('./elyby-manager');
+const { t } = require('./i18n/i18n');
 
 // Account fields that go into the encrypted `secret`
 const SECRET_FIELDS = {
@@ -153,7 +154,7 @@ class AccountsManager {
 
   setActiveAccount(id) {
     const found = this.data.accounts.find(a => a.id === id);
-    if (!found) throw new Error('Аккаунт не найден');
+    if (!found) throw new Error(t('Аккаунт не найден'));
     this.data.activeAccountId = id;
     this.save();
     return publicAccount(found);
@@ -194,7 +195,7 @@ class AccountsManager {
     try {
       this.msCode = await this.msAuth.requestDeviceCode();
     } catch (e) {
-      throw new Error(`Не удалось связаться с Microsoft: ${e.message}`);
+      throw new Error(t('Не удалось связаться с Microsoft: {error}', { error: e.message }));
     }
     return this.msCode;
   }
@@ -203,7 +204,7 @@ class AccountsManager {
    * Step 2: wait until the user signs in, then create/update the account.
    */
   async finishMicrosoftLogin() {
-    if (!this.msCode) throw new Error('Вход не начат');
+    if (!this.msCode) throw new Error(t('Вход не начат'));
     const code = this.msCode;
     this.msCode = null;
 
@@ -248,7 +249,7 @@ class AccountsManager {
 
     // Tokens stay encrypted when the file came from another PC or Windows user
     if ((acc.type === 'microsoft' && !acc.mclcAuth) || (acc.type === 'elyby' && !acc.accessToken)) {
-      throw new Error('Сохранённый вход недоступен на этом компьютере. Войдите в аккаунт заново.');
+      throw new Error(t('Сохранённый вход недоступен на этом компьютере. Войдите в аккаунт заново.'));
     }
 
     if (acc.type === 'microsoft' && acc.mclcAuth) {
@@ -256,7 +257,7 @@ class AccountsManager {
       // Refresh a few minutes before expiry; accounts saved by msmc use the same client id and token format
       if (!meta.exp || meta.exp - Date.now() < 5 * 60 * 1000) {
         if (!meta.refresh) {
-          throw new Error('Сессия Microsoft истекла. Войдите в аккаунт заново.');
+          throw new Error(t('Сессия Microsoft истекла. Войдите в аккаунт заново.'));
         }
         const msToken = await this.msAuth.refreshMicrosoftToken(meta.refresh);
         const result = await this.msAuth.loginToMinecraft(msToken);

@@ -1,0 +1,108 @@
+# Builds the launcher on every push to main and every pull request (by hand: Actions → Build → Run workflow).
+# The setup, the portable exe and app.asar end up in the run's artifacts.
+# On main, a version in package.json that has no release yet is also published: the release
+# v<version> with these files and update.json, which the launcher's updater reads (src/updater.js).
+# So releasing is: raise "version" in package.json (e.g. `npm version patch --no-git-tag-version`),
+# commit, push to main. A version like 0.2.0-beta.1 becomes a pre-release, which the updater skips.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  pull_request:
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  # runs on main may publish a release: they go one after another instead of cancelling each other
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # tags and history for the release notes
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Версия в package.json должна выглядеть как 0.2.0 или 0.2.0-beta.1, а не «$VERSION»"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          [[ "$GITHUB_REF" == refs/heads/main && "$GITHUB_EVENT_NAME" != pull_request ]] || exit 0
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "Релиз v$VERSION уже есть: только сборка"
+            exit 0
+          fi
+          # a tag made by `npm version` is fine as long as it is on this commit
+          tag=$(git rev-parse -q --verify "refs/tags/v$VERSION^{commit}" || true)
+          if [[ -n "$tag" && "$tag" != "$GITHUB_SHA" ]]; then
+            echo "::error::Тег v$VERSION уже стоит на другом коммите: поднимите версию в package.json"
+            exit 1
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Будет опубликован релиз v$VERSION"
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Collect files
+        run: node scripts/release-files.js
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AeterMC-${{ steps.version.outputs.version }}-${{ github.sha }}
+          path: release/
+
+      - name: Release notes
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # commit subjects since the previous release (for a stable one: the previous stable one),
+          # without the version bump commits; shown in the launcher's update menu (in English, like the commits)
+          exclude=()
+          [[ "$VERSION" == *-* ]] || exclude=(--exclude '*-*')
+          prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${exclude[@]}" HEAD^ 2>/dev/null || true)
+          if [[ -z "$prev" ]]; then
+            echo "First release with auto-update" > notes.md
+          else
+            git log --no-merges --format='- %s' "$prev..HEAD" \
+              | grep -vE '^- v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' > notes.md || true
+            [[ -s notes.md ]] || echo "- Minor fixes" > notes.md
+          fi
+          cat notes.md
+
+      - name: Publish release
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          flags=()
+          [[ "$VERSION" == *-* ]] && flags+=(--prerelease)
+          gh release create "v$VERSION" release/* \
+            --target "$GITHUB_SHA" \
+            --title "AeterMC $VERSION" \
+            --notes-file notes.md \
+            "${flags[@]}"

@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
+const { t } = require('./i18n/i18n');
 
 const MODRINTH_API = 'https://api.modrinth.com/v2';
 const USER_AGENT = 'AeterMC/1.0.0 (contact@waruk.dev)';
@@ -74,7 +75,7 @@ class ModrinthManager {
         limit: response.data.limit || limit
       };
     } catch (err) {
-      throw new Error(`Ошибка поиска в Modrinth: ${err.message}`);
+      throw new Error(t('Ошибка поиска в Modrinth: {error}', { error: err.message }));
     }
   }
 
@@ -237,7 +238,7 @@ class ModrinthManager {
   /** Downloads the primary file of a version, checks its sha1 and moves it into place. */
   async downloadVersion(version, modsDir, { disabled = false } = {}) {
     const file = primaryFile(version);
-    if (!file || !file.url) throw new Error('У этой версии мода нет файла для скачивания');
+    if (!file || !file.url) throw new Error(t('У этой версии мода нет файла для скачивания'));
     fs.mkdirSync(modsDir, { recursive: true });
 
     const finalName = disabled ? `${file.filename}.disabled` : file.filename;
@@ -248,7 +249,7 @@ class ModrinthManager {
     const data = Buffer.from(res.data);
     const sha1 = crypto.createHash('sha1').update(data).digest('hex');
     if (file.hashes && file.hashes.sha1 && file.hashes.sha1 !== sha1) {
-      throw new Error(`Файл ${file.filename} скачался повреждённым, попробуйте ещё раз`);
+      throw new Error(t('Файл {file} скачался повреждённым, попробуйте ещё раз', { file: file.filename }));
     }
     fs.writeFileSync(tmpPath, data);
     fs.renameSync(tmpPath, finalPath);
@@ -277,13 +278,13 @@ class ModrinthManager {
 
     const versions = await this.getProjectVersions(projectId, gameVersion, loader);
     if (!versions.length) {
-      throw new Error(`У мода нет версии для Minecraft ${gameVersion} (${loader})`);
+      throw new Error(t('У мода нет версии для Minecraft {version} ({loader})', { version: gameVersion, loader }));
     }
     const version = versions[0];
     const existing = state.installed[version.project_id] || [];
 
     if (existing.some(e => e.versionId === version.id)) {
-      if (!_state) throw new Error('Эта версия мода уже установлена');
+      if (!_state) throw new Error(t('Эта версия мода уже установлена'));
     } else {
       const disabled = existing.length > 0 && existing.every(e => !e.enabled);
       const newName = await this.downloadVersion(version, modsDir, { disabled });
@@ -315,15 +316,15 @@ class ModrinthManager {
   /** Updates one installed file to the newest version for this Minecraft version + loader. */
   async updateMod(modsDir, fileName, gameVersion, loader) {
     const fullPath = path.join(modsDir, fileName);
-    if (!fs.existsSync(fullPath)) throw new Error('Файл мода не найден');
+    if (!fs.existsSync(fullPath)) throw new Error(t('Файл мода не найден'));
     const sha1 = this.sha1Of(fullPath);
 
     const [current, latest] = await Promise.all([this.identify([sha1]), this.latestFor([sha1], gameVersion, loader)]);
     const cur = current[sha1];
     const next = latest[sha1];
-    if (!cur) throw new Error('Мод не найден на Modrinth');
+    if (!cur) throw new Error(t('Мод не найден на Modrinth'));
     if (!next || next.id === cur.id || !isCompatible(next, gameVersion, loader)) {
-      throw new Error(`Нет обновления для Minecraft ${gameVersion}`);
+      throw new Error(t('Нет обновления для Minecraft {version}', { version: gameVersion }));
     }
 
     const disabled = fileName.toLowerCase().endsWith('.disabled');

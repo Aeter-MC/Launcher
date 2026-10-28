@@ -24,6 +24,8 @@ const fs = require('fs');
 const os = require('os');
 
 const { SettingsManager, DEFAULT_MINECRAFT_DIR } = require('./settings-manager');
+const i18n = require('./i18n/i18n');
+const { t } = i18n;
 const { VersionManager } = require('./version-manager');
 const { LoaderManager } = require('./loaders');
 const { detectJavaInstallations, pickJavaFor } = require('./java-detector');
@@ -63,6 +65,24 @@ function currentTheme() {
   return THEMES.find(t => t.id === id) || THEMES.find(t => t.id === 'dark-mono') || THEMES[0] || null;
 }
 
+/** The chosen language, or until one is chosen in the settings the system one. */
+function applyLanguage() {
+  i18n.setLanguage(settingsManager.get().language || i18n.detectLanguage(app.getPreferredSystemLanguages()));
+}
+
+/** The pages get the language in the URL: after a change they are loaded again, the main one on the settings. */
+function reloadWindows() {
+  const theme = currentTheme();
+  const query = { theme: theme ? theme.id : '', lang: i18n.language() };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { ...query, page: 'settings' } });
+  }
+  if (consoleWindow && !consoleWindow.isDestroyed()) {
+    consoleWindow.setTitle(t('Консоль — AeterMC'));
+    consoleWindow.loadFile(path.join(__dirname, 'renderer', 'console.html'), { query });
+  }
+}
+
 /** Window background before the page paints, and the colors of native parts (title bar of the console window). */
 function applyThemeToWindows() {
   const theme = currentTheme();
@@ -81,6 +101,7 @@ const userDataDir = app.getPath('userData');
 
 const settingsManager = new SettingsManager(userDataDir);
 const currentSettings = settingsManager.get();
+i18n.setLanguage(currentSettings.language || 'ru');
 
 // Not "cache": on Windows that is the same folder as Chromium's own Cache, which it cleans on startup
 const diskCache = new DiskCache(path.join(userDataDir, 'mcl-cache'));
@@ -100,8 +121,23 @@ const updater = new Updater({
   resourcesDir: process.resourcesPath,
   exePath: app.getPath('exe'),
   portable: !!process.env.PORTABLE_EXECUTABLE_FILE,
+  // only a built launcher updates itself; `npm start` runs from the sources
+  enabled: app.isPackaged,
   onChange: (state) => sendToWindow('update-state', state)
 });
+
+/** Checks for a launcher update; with "download automatically" on, a found one is downloaded right away. */
+async function checkForUpdate() {
+  await updater.check();
+  autoDownloadUpdate();
+  return updater.state;
+}
+
+function autoDownloadUpdate() {
+  if (updater.state.status !== 'available' || settingsManager.get().autoUpdate === false) return;
+  // a failed download leaves its error in the state for the update menu; the next check tries again
+  updater.download().catch(() => {});
+}
 
 let javaCache = null;
 // Java the launcher downloaded itself lives here (see java-installer.js)
@@ -125,13 +161,13 @@ async function javaForVersion(versionId, log = () => {}) {
   const required = await versionManager.getRequiredJava(versionId);
   const java = pickJavaFor(await getJavaList(), required);
   if (java) return java.path;
-  log('info', `[JAVA]: Нужна Java ${required}, её нет — скачиваю Eclipse Temurin ${required}…`);
+  log('info', `[JAVA]: ${t('Нужна Java {version}, её нет — скачиваю Eclipse Temurin {version}…', { version: required })}`);
   try {
     const javaPath = await installJava(required);
-    log('info', `[JAVA]: Java ${required} установлена: ${javaPath}`);
+    log('info', `[JAVA]: ${t('Java {version} установлена: {path}', { version: required, path: javaPath })}`);
     return javaPath;
   } catch (e) {
-    throw new Error(`Не удалось скачать Java ${required}: ${e.message}`);
+    throw new Error(t('Не удалось скачать Java {version}: {error}', { version: required, error: e.message }));
   }
 }
 
@@ -155,7 +191,7 @@ function createWindow() {
   const theme = currentTheme();
   if (theme) nativeTheme.themeSource = theme.mode;
   // `AeterMC.exe --setup` (or `npm start -- --setup`) opens the first-run setup again
-  const query = { theme: theme ? theme.id : '' };
+  const query = { theme: theme ? theme.id : '', lang: i18n.language() };
   if (process.argv.includes('--setup')) query.setup = '1';
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query });
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -210,7 +246,7 @@ function openConsoleWindow() {
     height: 560,
     minWidth: 480,
     minHeight: 280,
-    title: 'Консоль — AeterMC',
+    title: t('Консоль — AeterMC'),
     backgroundColor: theme ? theme.preview.bg : '#0b0c0f',
     autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
@@ -221,7 +257,7 @@ function openConsoleWindow() {
     }
   });
   if (themedIcon) consoleWindow.setIcon(themedIcon);
-  consoleWindow.loadFile(path.join(__dirname, 'renderer', 'console.html'), { query: { theme: theme ? theme.id : '' } });
+  consoleWindow.loadFile(path.join(__dirname, 'renderer', 'console.html'), { query: { theme: theme ? theme.id : '', lang: i18n.language() } });
   consoleWindow.on('closed', () => {
     consoleWindow = null;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('console-window', false);
@@ -243,12 +279,13 @@ ipcMain.handle('console-set-on-top', (event, onTop) => {
 });
 
 app.whenReady().then(() => {
+  applyLanguage();
   createWindow();
 
   // Only a built launcher updates itself; `npm start` runs from the sources
   if (app.isPackaged) {
-    setTimeout(() => updater.check(), 5000);
-    setInterval(() => updater.check(), 6 * 60 * 60 * 1000);
+    setTimeout(checkForUpdate, 5000);
+    setInterval(checkForUpdate, 6 * 60 * 60 * 1000);
   }
 
   app.on('activate', () => {
@@ -310,6 +347,10 @@ ipcMain.handle('get-settings', () => {
 ipcMain.handle('save-settings', (event, newSettings) => {
   const ok = settingsManager.save(newSettings);
   if ('theme' in newSettings) applyThemeToWindows();
+  if ('language' in newSettings) {
+    applyLanguage();
+    reloadWindows();
+  }
   if (newSettings.gameDir) {
     versionManager.setGameDir(newSettings.gameDir);
     accountsManager.setGameDir(newSettings.gameDir);
@@ -318,6 +359,7 @@ ipcMain.handle('save-settings', (event, newSettings) => {
   if ('prismImport' in newSettings) {
     instancesManager.includePrism = newSettings.prismImport === true;
   }
+  if (newSettings.autoUpdate) autoDownloadUpdate();
   return ok;
 });
 
@@ -414,7 +456,7 @@ ipcMain.handle('delete-instance', (event, instanceId) => {
 ipcMain.handle('set-instance-icon', (event, instanceId, choice) => {
   if (choice && choice.file) {
     let img = nativeImage.createFromPath(choice.file);
-    if (img.isEmpty()) throw new Error('Не удалось открыть картинку — подойдёт PNG или JPG');
+    if (img.isEmpty()) throw new Error(t('Не удалось открыть картинку — подойдёт PNG или JPG'));
     const { width, height } = img.getSize();
     const side = Math.min(width, height);
     img = img.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side });
@@ -454,14 +496,14 @@ ipcMain.handle('open-instance-folder', (event, instanceId) => {
 function listSyncProfiles() {
   const root = settingsManager.get().gameDir || DEFAULT_MINECRAFT_DIR;
   return [
-    { id: 'global', name: 'Общая папка .minecraft', dir: root },
+    { id: 'global', name: t('Общая папка .minecraft'), dir: root },
     ...instancesManager.listInstances().map(i => ({ id: i.id, name: i.name, dir: i.minecraftDir }))
   ];
 }
 
 function findSyncProfile(id) {
   const profile = listSyncProfiles().find(p => p.id === id);
-  if (!profile) throw new Error('Сборка не найдена');
+  if (!profile) throw new Error(t('Сборка не найдена'));
   return profile;
 }
 
@@ -482,7 +524,7 @@ ipcMain.handle('options-sync-check', (event, targetId, sourceId) => {
 
 ipcMain.handle('options-sync-apply', (event, targetId, sourceId, categoryIds) => {
   if (launcherCore.isRunning || launcherCore.isLaunching) {
-    throw new Error('Закройте игру перед переносом настроек');
+    throw new Error(t('Закройте игру перед переносом настроек'));
   }
   const target = findSyncProfile(targetId);
   const source = findSyncProfile(sourceId);
@@ -498,8 +540,8 @@ ipcMain.handle('search-modrinth', async (event, options) => {
 // Version and loader always come from the build itself, never from the page
 function findModdedInstance(instanceId) {
   const inst = instancesManager.listInstances().find(i => i.id === instanceId);
-  if (!inst) throw new Error('Моды можно устанавливать только в сборку');
-  if (inst.loader === 'vanilla') throw new Error('В сборке без загрузчика моды не работают');
+  if (!inst) throw new Error(t('Моды можно устанавливать только в сборку'));
+  if (inst.loader === 'vanilla') throw new Error(t('В сборке без загрузчика моды не работают'));
   return inst;
 }
 
@@ -515,7 +557,7 @@ ipcMain.handle('scan-instance-mods', async (event, instanceId, force) => {
 
 ipcMain.handle('update-instance-mod', async (event, instanceId, fileName) => {
   const inst = findModdedInstance(instanceId);
-  if (path.basename(fileName) !== fileName) throw new Error('Некорректное имя файла');
+  if (path.basename(fileName) !== fileName) throw new Error(t('Некорректное имя файла'));
   return await modrinthManager.updateMod(inst.modsDir, fileName, inst.version, inst.loader);
 });
 
@@ -538,7 +580,7 @@ ipcMain.handle('detect-java', async (event, force) => {
 
 ipcMain.handle('install-java', async (event, major) => {
   const m = Number(major);
-  if (![8, 11, 16, 17, 21, 25].includes(m)) throw new Error('Неизвестная версия Java');
+  if (![8, 11, 16, 17, 21, 25].includes(m)) throw new Error(t('Неизвестная версия Java'));
   return await installJava(m);
 });
 
@@ -561,7 +603,7 @@ ipcMain.handle('java-requirements', async () => {
 // File dialogs
 ipcMain.handle('browse-file', async (event, options = {}) => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: options.title || 'Выберите файл',
+    title: options.title || t('Выберите файл'),
     properties: ['openFile'],
     filters: options.filters || []
   });
@@ -573,7 +615,7 @@ ipcMain.handle('browse-file', async (event, options = {}) => {
 
 ipcMain.handle('browse-folder', async (event, options = {}) => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: options.title || 'Выберите папку',
+    title: options.title || t('Выберите папку'),
     properties: ['openDirectory', 'createDirectory']
   });
   if (!result.canceled && result.filePaths.length > 0) {
@@ -622,7 +664,7 @@ function currentScreenshotSources() {
 }
 
 function checkedScreenshot(file) {
-  if (!screenshots.isScreenshotPath(file, currentScreenshotSources())) throw new Error('Это не скриншот');
+  if (!screenshots.isScreenshotPath(file, currentScreenshotSources())) throw new Error(t('Это не скриншот'));
   return path.resolve(file);
 }
 
@@ -642,7 +684,7 @@ ipcMain.handle('screenshot-reveal', (event, file) => {
 
 ipcMain.handle('screenshot-copy', (event, file) => {
   const image = nativeImage.createFromPath(checkedScreenshot(file));
-  if (image.isEmpty()) throw new Error('Не удалось прочитать картинку');
+  if (image.isEmpty()) throw new Error(t('Не удалось прочитать картинку'));
   clipboard.writeImage(image);
   return true;
 });
@@ -682,17 +724,17 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
 
     if (launchOpts.instanceId) {
       const inst = instancesManager.listInstances().find(i => i.id === launchOpts.instanceId);
-      if (!inst) throw new Error('Сборка не найдена');
+      if (!inst) throw new Error(t('Сборка не найдена'));
       instanceId = inst.id;
       gameDir = inst.minecraftDir;
       versionNumber = inst.version;
 
       if (inst.loader !== 'vanilla') {
         // installed when the build was made; builds from Prism or a cleaned versions/ get it now
-        log('info', `[LAUNCHER]: Подготовка ${LoaderManager.label(inst.loader)} ${inst.loaderVersion || ''} для ${inst.version}`);
+        log('info', `[LAUNCHER]: ${t('Подготовка {loader} {version} для {mc}', { loader: LoaderManager.label(inst.loader), version: inst.loaderVersion || '', mc: inst.version })}`);
         const profile = await loaderManager.ensure(inst.loader, inst.version, inst.loaderVersion, {
           knownId: inst.versionId,
-          onStatus: (text) => { if (!/^Библиотеки/.test(text)) log('info', `[LAUNCHER]: ${text}`); },
+          onStatus: (text, { progress } = {}) => { if (!progress) log('info', `[LAUNCHER]: ${text}`); },
           getJava: () => javaForVersion(inst.version, log)
         });
         customVersion = profile.id;
@@ -706,7 +748,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
     // Java: explicit choice from settings, otherwise the one matching the version
     const javaPath = settings.javaPath || await javaForVersion(customVersion || versionNumber, log);
 
-    log('info', `[LAUNCHER]: Версия ${customVersion || versionNumber}, папка игры: ${gameDir}`);
+    log('info', `[LAUNCHER]: ${t('Версия {version}, папка игры: {dir}', { version: customVersion || versionNumber, dir: gameDir })}`);
 
     await launcherCore.launch(
       {
@@ -771,19 +813,23 @@ ipcMain.handle('get-game-state', () => ({
   launching: launchInProgress || !!launcherCore.isLaunching
 }));
 
-// Launcher update: the button left of the window controls
+// Launcher update: the button left of the window controls and the update menu
 ipcMain.handle('update-get-state', () => updater.state);
+ipcMain.handle('update-check', () => checkForUpdate());
+ipcMain.handle('update-releases', () => updater.releases());
 ipcMain.handle('update-download', () => updater.download());
 ipcMain.handle('update-restart', () => {
   if (launchInProgress || launcherCore.isRunning || launcherCore.isLaunching) {
-    throw new Error('Сначала закройте игру: лаунчер перезапустится для обновления');
+    throw new Error(t('Сначала закройте игру: лаунчер перезапустится для обновления'));
   }
   if (!updater.startSwap(true)) return false;
   app.quit();
   return true;
 });
-ipcMain.handle('update-open-page', () => {
-  if (updater.state.page) shell.openExternal(updater.state.page);
+// the found release, or with all = true the list of every release
+ipcMain.handle('update-open-page', (event, all) => {
+  const page = all ? updater.state.releasesPage : updater.state.page;
+  if (page) shell.openExternal(page);
 });
 // a downloaded update is put in place on exit even without "restart"
 app.on('will-quit', () => updater.startSwap(false));

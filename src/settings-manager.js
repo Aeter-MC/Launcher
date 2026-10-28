@@ -41,6 +41,8 @@ function getDefaultSettings() {
     showConsole: true,
     theme: 'dark-mono', // id of a file in design/themes
     autoCheckModUpdates: true,
+    autoUpdate: true, // launcher updates: download in the background, put in place on exit
+    language: null, // 'ru' | 'en'; null: the system language (see i18n.detectLanguage)
     buildsView: 'grid', // 'grid' | 'list'
     sidebarCollapsed: false,
     animations: true,

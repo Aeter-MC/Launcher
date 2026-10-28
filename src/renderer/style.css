@@ -72,8 +72,6 @@ h1, h2, h3 { font-weight: 600; }
 .titlebar-close:hover { background: var(--color-titlebar-close); color: var(--color-white); }
 .titlebar-update { width: auto; display: flex; align-items: center; gap: 6px; padding: 0 12px; color: var(--color-accent); font-size: var(--font-size-xs); font-weight: 600; }
 .titlebar-update svg.ic { width: 14px; height: 14px; stroke-width: 2; }
-.titlebar-update:disabled { cursor: default; color: var(--color-text-2); }
-.titlebar-update:disabled:hover { background: none; color: var(--color-text-2); }
 
 /* ================= LAYOUT ================= */
 .app { flex: 1; display: flex; min-height: 0; }
@@ -820,6 +818,29 @@ label.setting { cursor: pointer; }
 .modal-body .btn-block { margin-top: 14px; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--color-line); }
 #dialog-input { margin-top: 12px; }
+
+/* Launcher update */
+.update-summary { display: flex; align-items: center; gap: 12px; }
+.update-logo { width: 34px; height: 34px; flex-shrink: 0; }
+.update-summary-text { flex: 1; min-width: 0; }
+.update-title { font-size: var(--font-size-lg); font-weight: 600; }
+.update-sub { font-size: var(--font-size-sm); color: var(--color-text-2); margin-top: 2px; }
+#update-progress { margin-top: 14px; }
+.update-notes { display: flex; flex-direction: column; gap: 8px; }
+.release { padding: 10px 12px; border: 1px solid var(--color-line); border-radius: var(--radius-md); }
+.release-head { display: flex; align-items: center; gap: 8px; }
+.release-version { font-weight: 600; }
+.release-date { margin-left: auto; font-size: var(--font-size-xs); color: var(--color-text-3); }
+.release-notes { margin-top: 6px; font-size: var(--font-size-sm); color: var(--color-text-2); }
+.release-notes ul { padding-left: 18px; }
+.release-notes li + li, .release-notes p + p { margin-top: 3px; }
+.release-notes code { font-family: var(--font-family-mono); font-size: var(--font-size-xs); }
+.release-heading { margin: 8px 0 3px; font-weight: 600; color: var(--color-text); }
+.release-heading:first-child { margin-top: 0; }
+.release-empty { font-size: var(--font-size-sm); color: var(--color-text-3); }
+.tag-new { background: var(--color-update-soft); color: var(--color-update); }
+.update-auto { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--color-line); cursor: pointer; }
+.update-all { margin-right: auto; }
 
 /* Microsoft login */
 .ms-body { display: flex; flex-direction: column; align-items: center; text-align: center; }

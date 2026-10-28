@@ -100,9 +100,11 @@ contextBridge.exposeInMainWorld('api', {
 
   // Launcher update
   getUpdateState: () => ipcRenderer.invoke('update-get-state'),
+  checkUpdate: () => ipcRenderer.invoke('update-check'),
+  getUpdateReleases: () => ipcRenderer.invoke('update-releases'),
   downloadUpdate: () => ipcRenderer.invoke('update-download'),
   restartToUpdate: () => ipcRenderer.invoke('update-restart'),
-  openUpdatePage: () => ipcRenderer.invoke('update-open-page'),
+  openUpdatePage: (all) => ipcRenderer.invoke('update-open-page', all),
   onUpdateState: (callback) => {
     const handler = (event, state) => callback(state);
     ipcRenderer.on('update-state', handler);

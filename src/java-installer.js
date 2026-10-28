@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
+const { t } = require('./i18n/i18n');
 
 const API = 'https://api.adoptium.net/v3/assets/latest';
 
@@ -59,7 +60,7 @@ class JavaInstaller {
       asset = (res.data || []).find(a => a.binary && a.binary.package && a.binary.package.link.endsWith('.zip'));
       if (asset) break;
     }
-    if (!asset) throw new Error(`Для Java ${major} нет сборки Temurin под Windows`);
+    if (!asset) throw new Error(t('Для Java {major} нет сборки Temurin под Windows', { major }));
 
     const pkg = asset.binary.package;
     const version = asset.version && asset.version.semver;
@@ -89,7 +90,7 @@ class JavaInstaller {
     });
     if (pkg.checksum && hash.digest('hex') !== pkg.checksum) {
       fs.rmSync(zipPath, { force: true });
-      throw new Error('Архив Java скачался повреждённым, попробуйте ещё раз');
+      throw new Error(t('Архив Java скачался повреждённым, попробуйте ещё раз'));
     }
 
     onProgress({ stage: 'extract', received: total, total, version });
@@ -105,7 +106,7 @@ class JavaInstaller {
     fs.rmSync(zipPath, { force: true });
 
     const exe = this.installedPath(major);
-    if (!exe) throw new Error('В архиве Java не нашлось java.exe');
+    if (!exe) throw new Error(t('В архиве Java не нашлось java.exe'));
     onProgress({ stage: 'done', received: total, total, version });
     return exe;
   }

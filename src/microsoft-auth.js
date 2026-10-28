@@ -6,6 +6,7 @@
  * Then: Microsoft token -> Xbox Live -> XSTS -> Minecraft token -> profile.
  */
 const axios = require('axios');
+const { t } = require('./i18n/i18n');
 
 // Same public client id the official launcher (and msmc) uses, so older refresh tokens keep working
 const CLIENT_ID = '00000000402b5328';
@@ -18,16 +19,16 @@ const FORM_HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded' };
 const JSON_HEADERS = { 'Content-Type': 'application/json', Accept: 'application/json' };
 
 const XSTS_ERRORS = {
-  2148916233: 'У этого аккаунта Microsoft нет профиля Xbox. Зайдите на xbox.com и создайте его.',
-  2148916235: 'Xbox Live недоступен в вашей стране.',
-  2148916236: 'Аккаунт требует подтверждения возраста на xbox.com.',
-  2148916237: 'Аккаунт требует подтверждения возраста на xbox.com.',
-  2148916238: 'Это детский аккаунт — его нужно добавить в семейную группу на account.microsoft.com.'
+  2148916233: 'У этого аккаунта Microsoft нет профиля Xbox. Зайдите на xbox.com и создайте его.', // i18n-key
+  2148916235: 'Xbox Live недоступен в вашей стране.', // i18n-key
+  2148916236: 'Аккаунт требует подтверждения возраста на xbox.com.', // i18n-key
+  2148916237: 'Аккаунт требует подтверждения возраста на xbox.com.', // i18n-key
+  2148916238: 'Это детский аккаунт — его нужно добавить в семейную группу на account.microsoft.com.' // i18n-key
 };
 
 class LoginCancelled extends Error {
   constructor() {
-    super('Вход отменён');
+    super(t('Вход отменён'));
     this.cancelled = true;
   }
 }
@@ -79,11 +80,11 @@ class MicrosoftAuth {
         const err = res.data && res.data.error;
         if (err === 'authorization_pending') continue;
         if (err === 'slow_down') { interval += 5000; continue; }
-        if (err === 'authorization_declined') throw new Error('Вход отклонён в окне Microsoft');
+        if (err === 'authorization_declined') throw new Error(t('Вход отклонён в окне Microsoft'));
         if (err === 'expired_token') break;
         throw new Error(`Microsoft: ${(res.data && (res.data.error_description || err)) || res.status}`);
       }
-      throw new Error('Код истёк. Попробуйте войти ещё раз.');
+      throw new Error(t('Код истёк. Попробуйте войти ещё раз.'));
     } finally {
       if (this.pending === session) this.pending = null;
     }
@@ -101,7 +102,7 @@ class MicrosoftAuth {
       refresh_token: refreshToken
     }), { headers: FORM_HEADERS, timeout: 15000, validateStatus: () => true });
     if (res.status !== 200 || !res.data.access_token) {
-      throw new Error('Сессия Microsoft истекла. Войдите в аккаунт заново.');
+      throw new Error(t('Сессия Microsoft истекла. Войдите в аккаунт заново.'));
     }
     return res.data;
   }
@@ -119,7 +120,7 @@ class MicrosoftAuth {
         }, { headers: JSON_HEADERS, timeout: 15000 });
         break;
       } catch (e) {
-        if (prefix === 't=' || !e.response) throw new Error(`Ошибка входа в Xbox Live: ${e.response ? e.response.status : e.message}`);
+        if (prefix === 't=' || !e.response) throw new Error(t('Ошибка входа в Xbox Live: {error}', { error: e.response ? e.response.status : e.message }));
       }
     }
 
@@ -134,7 +135,7 @@ class MicrosoftAuth {
       }, { headers: JSON_HEADERS, timeout: 15000 });
     } catch (e) {
       const xerr = e.response && e.response.data && e.response.data.XErr;
-      throw new Error(XSTS_ERRORS[xerr] || `Ошибка Xbox Live: ${xerr || e.message}`);
+      throw new Error(XSTS_ERRORS[xerr] ? t(XSTS_ERRORS[xerr]) : t('Ошибка Xbox Live: {error}', { error: xerr || e.message }));
     }
 
     const mc = await axios.post('https://api.minecraftservices.com/authentication/login_with_xbox', {
@@ -150,7 +151,7 @@ class MicrosoftAuth {
       profile = res.data;
     } catch (e) {
       if (e.response && e.response.status === 404) {
-        throw new Error('На этом аккаунте Microsoft не куплен Minecraft: Java Edition.');
+        throw new Error(t('На этом аккаунте Microsoft не куплен Minecraft: Java Edition.'));
       }
       throw e;
     }

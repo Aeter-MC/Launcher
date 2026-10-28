@@ -4,6 +4,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { t } = require('./i18n/i18n');
 
 const VIDEO_KEYS = new Set([
   'ao', 'biomeBlendRadius', 'chunkSectionFadeInTime', 'cutoutLeaves', 'enableVsync', 'entityDistanceScaling',
@@ -34,11 +35,11 @@ const OTHER_KEYS = new Set([
 ]);
 
 const CATEGORIES = [
-  { id: 'keybinds', label: 'Управление и бинды', match: k => k.startsWith('key_') || CONTROL_KEYS.has(k) },
-  { id: 'mouse', label: 'Мышь', match: k => MOUSE_KEYS.has(k) },
-  { id: 'video', label: 'Графика', match: k => VIDEO_KEYS.has(k) },
-  { id: 'sound', label: 'Звук', match: k => k.startsWith('soundCategory_') || SOUND_KEYS.has(k) },
-  { id: 'other', label: 'Язык, чат и прочее', match: k => k.startsWith('chat') || k.startsWith('modelPart_') || OTHER_KEYS.has(k) }
+  { id: 'keybinds', label: 'Управление и бинды', match: k => k.startsWith('key_') || CONTROL_KEYS.has(k) }, // i18n-key
+  { id: 'mouse', label: 'Мышь', match: k => MOUSE_KEYS.has(k) }, // i18n-key
+  { id: 'video', label: 'Графика', match: k => VIDEO_KEYS.has(k) }, // i18n-key
+  { id: 'sound', label: 'Звук', match: k => k.startsWith('soundCategory_') || SOUND_KEYS.has(k) }, // i18n-key
+  { id: 'other', label: 'Язык, чат и прочее', match: k => k.startsWith('chat') || k.startsWith('modelPart_') || OTHER_KEYS.has(k) } // i18n-key
 ];
 
 const DEFAULT_SYNC_MODES = Object.fromEntries(CATEGORIES.map(c => [c.id, 'ask']));
@@ -102,7 +103,7 @@ function findNewestSource(targetDir, profiles) {
 /** Copies settings of the chosen categories from sourceDir to targetDir. */
 function applyOptions(sourceDir, targetDir, categoryIds) {
   const source = readOptions(sourceDir);
-  if (!source) throw new Error('В исходной сборке ещё нет options.txt — запустите её хотя бы раз.');
+  if (!source) throw new Error(t('В исходной сборке ещё нет options.txt — запустите её хотя бы раз.'));
   const wanted = new Set(categoryIds);
   const target = readOptions(targetDir);
   const result = target ? new Map(target) : new Map();

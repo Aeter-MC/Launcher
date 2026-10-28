@@ -30,6 +30,9 @@ const state = {
 
 // ================= HELPERS =================
 const $ = (id) => document.getElementById(id);
+// i18n.js is loaded before this file; the page's language comes in the URL like the theme
+const { t } = i18n;
+i18n.translateDom(document.documentElement);
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -56,26 +59,26 @@ function errText(err) {
 }
 
 function formatPlaytime(seconds) {
-  if (!seconds) return '0 ч';
+  if (!seconds) return t('0 ч');
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+  return h > 0 ? t('{h} ч {m} мин', { h, m }) : t('{m} мин', { m });
 }
 
 function formatAgo(ts) {
-  if (!ts) return 'не запускалась';
+  if (!ts) return t('не запускалась');
   const diff = (Date.now() - ts) / 1000;
-  if (diff < 60) return 'только что';
-  if (diff < 3600) return `${pluralize(Math.floor(diff / 60), ['минуту', 'минуты', 'минут'])} назад`;
+  if (diff < 60) return t('только что');
+  if (diff < 3600) return t('{time} назад', { time: pluralize(Math.floor(diff / 60), ['минуту', 'минуты', 'минут']) });
   const date = new Date(ts);
   const today = new Date();
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-  if (date >= startOfToday) return `${pluralize(Math.floor(diff / 3600), ['час', 'часа', 'часов'])} назад`;
-  if (date >= yesterday) return 'вчера';
+  if (date >= startOfToday) return t('{time} назад', { time: pluralize(Math.floor(diff / 3600), ['час', 'часа', 'часов']) });
+  if (date >= yesterday) return t('вчера');
   const opts = date.getFullYear() === today.getFullYear() ? { day: 'numeric', month: 'long' } : { day: 'numeric', month: 'long', year: 'numeric' };
   // "2 сентября 2025 г." -> "2 сентября 2025 года"
-  return date.toLocaleDateString('ru-RU', opts).replace(/\s?г\.$/, ' года');
+  return date.toLocaleDateString(i18n.locale(), opts).replace(/\s?г\.$/, ' года'); // i18n-ignore: only in Russian dates
 }
 
 function isRunning(inst) {
@@ -83,13 +86,13 @@ function isRunning(inst) {
 }
 
 function lastPlayedText(inst) {
-  if (isRunning(inst)) return 'Сейчас в игре';
-  return inst.lastPlayed ? `Последний запуск ${agoSpan(inst.lastPlayed)}` : 'Ещё не запускалась';
+  if (isRunning(inst)) return t('Сейчас в игре');
+  return inst.lastPlayed ? t('Последний запуск {ago}', { ago: agoSpan(inst.lastPlayed) }) : t('Ещё не запускалась');
 }
 
 // short form for cards and rows: "в игре" while this build is running
 function lastPlayedShort(inst) {
-  return isRunning(inst) ? 'в игре' : agoSpan(inst.lastPlayed);
+  return isRunning(inst) ? t('в игре') : agoSpan(inst.lastPlayed);
 }
 
 // relative time that keeps itself current: "только что" -> "1 минуту назад" -> ...
@@ -191,7 +194,7 @@ function setAvatar(img, acc) {
 }
 
 function accountTypeLabel(type) {
-  return type === 'microsoft' ? 'Microsoft' : type === 'elyby' ? 'Ely.by' : 'Оффлайн';
+  return type === 'microsoft' ? 'Microsoft' : type === 'elyby' ? 'Ely.by' : t('Оффлайн');
 }
 
 function findInstance(id) {
@@ -212,7 +215,7 @@ function hasMods(inst) {
 }
 
 // ================= DIALOG =================
-function dialog({ title, text = '', input = null, okText = 'OK', cancelText = 'Отмена', extraText = null, danger = false }) {
+function dialog({ title, text = '', input = null, okText = 'OK', cancelText = t('Отмена'), extraText = null, danger = false }) {
   return new Promise(resolve => {
     const modal = $('modal-dialog');
     const inputEl = $('dialog-input');
@@ -269,6 +272,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   restoreGameState();
 
   await loadSettings();
+  // after a language change the window reopens on the settings
+  if (new URLSearchParams(location.search).get('page') === 'settings') showPage('settings');
   renderGreeting();
   renderTip();
   loadWeekStats();
@@ -280,7 +285,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await maybeRunSetup();
   startBackgroundUpdateChecks();
 
-  appendLog('info', '[LAUNCHER]: AeterMC готов к работе');
+  appendLog('info', t('[LAUNCHER]: AeterMC готов к работе'));
 });
 
 // ================= WINDOW =================
@@ -296,44 +301,186 @@ function setupWindowControls() {
 }
 
 // ================= LAUNCHER UPDATE =================
-// Button left of the window controls; downloading and swapping happen in updater.js
+// The button left of the window controls, the update menu and its row in the settings;
+// checking, downloading and swapping happen in updater.js
 const UPDATE_MANUAL_HINTS = {
-  portable: 'Портативная версия обновляется новым файлом: откроется страница релиза',
-  electron: 'Эту версию нужно поставить установщиком: откроется страница релиза',
-  readonly: 'Нет доступа к папке лаунчера: скачайте установщик со страницы релиза'
+  portable: t('Портативная версия обновляется новым файлом: скачайте его со страницы релиза'),
+  electron: t('Эту версию нужно поставить установщиком со страницы релиза'),
+  readonly: t('Нет доступа к папке лаунчера: скачайте установщик со страницы релиза')
 };
 
-function renderUpdateButton(update = {}) {
+let updateState = {};
+let updateAction = null;            // what the menu's main button does now
+let updateNotesVersion;             // the found version the release notes were loaded for
+
+function updatePercent(u) {
+  return `${Math.round((u.progress || 0) * 100)}%`;
+}
+
+function renderUpdate() {
+  renderUpdateButton();
+  renderUpdateSettings();
+  if (!$('modal-update').classList.contains('hidden')) renderUpdateMenu();
+}
+
+function renderUpdateButton() {
+  const u = updateState;
   const btn = $('btn-update');
-  const status = update.status;
   const views = {
-    available: ['download', update.version, `Доступна версия ${update.version}. Нажмите, чтобы скачать`],
-    downloading: ['download', `${Math.round((update.progress || 0) * 100)}%`, `Скачивается версия ${update.version}…`],
-    ready: ['refresh', 'Перезапустить', `Версия ${update.version} скачана. Перезапустите лаунчер, иначе она установится при следующем выходе`],
-    manual: ['external', update.version, `Доступна версия ${update.version}. ${UPDATE_MANUAL_HINTS[update.reason] || ''}`]
+    available: ['download', u.version, t('Доступна версия {version}', { version: u.version })],
+    downloading: ['download', updatePercent(u), t('Скачивается версия {version}', { version: u.version })],
+    ready: ['refresh', t('Обновить'), t('Версия {version} скачана: перезапустите лаунчер, чтобы обновить', { version: u.version })],
+    manual: ['external', u.version, t('Доступна версия {version}', { version: u.version })]
   };
-  const view = views[status];
+  const view = views[u.status];
   btn.classList.toggle('hidden', !view);
   if (!view) return;
   btn.innerHTML = `${icon(view[0])}<span>${esc(view[1])}</span>`;
   btn.title = view[2];
-  btn.disabled = status === 'downloading';
-  btn.dataset.status = status;
+}
+
+/** One line about the update for the settings page. */
+function updateStatusText(u) {
+  if (u.status === 'available' || u.status === 'manual') return t('Доступна версия {version}', { version: u.version });
+  if (u.status === 'downloading') return t('Скачивается версия {version}: {percent}', { version: u.version, percent: updatePercent(u) });
+  if (u.status === 'ready') return t('Версия {version} установится при перезапуске', { version: u.version });
+  if (u.enabled === false) return t('Запущено из исходников: обновления работают только в собранном лаунчере');
+  if (u.checking) return t('Проверяем обновления…');
+  if (u.error) return t('Не удалось проверить обновления');
+  return u.checkedAt ? t('Установлена последняя версия') : '';
+}
+
+function renderUpdateSettings() {
+  const u = updateState;
+  $('settings-update-label').textContent = `AeterMC ${u.current || ''}`;
+  $('settings-update-hint').textContent = updateStatusText(u);
+  $('btn-open-update').textContent = u.status === 'idle' ? t('Проверить обновления') : t('Подробнее');
+}
+
+function renderUpdateMenu() {
+  const u = updateState;
+  const version = esc(u.version);
+  const current = esc(u.current);
+  let title, sub, action;
+  if (u.status === 'available') {
+    title = t('Доступна версия {version}', { version });
+    sub = t('Сейчас установлена {version}', { version: current }) + (u.size ? ` · ${t('скачать {size}', { size: formatSize(u.size) })}` : '');
+    action = { text: t('Скачать'), run: () => api.downloadUpdate() };
+  } else if (u.status === 'downloading') {
+    title = t('Скачивается версия {version}', { version });
+    sub = u.size ? t('{n} из {total}', { n: updatePercent(u), total: formatSize(u.size) }) : updatePercent(u);
+    action = { text: t('Скачивается…'), disabled: true };
+  } else if (u.status === 'ready') {
+    title = t('Версия {version} готова к установке', { version });
+    sub = t('Перезапустите лаунчер, иначе она установится, когда вы его закроете');
+    action = { text: t('Перезапустить'), run: () => api.restartToUpdate() };
+  } else if (u.status === 'manual') {
+    title = t('Доступна версия {version}', { version });
+    sub = esc(UPDATE_MANUAL_HINTS[u.reason] || '');
+    action = { text: t('Открыть страницу релиза'), run: () => api.openUpdatePage() };
+  } else {
+    title = u.checking ? t('Проверяем обновления…') : u.checkedAt && !u.error ? t('Установлена последняя версия') : `AeterMC ${current}`;
+    // with a failed check the error line below says what happened
+    sub = u.enabled === false ? esc(updateStatusText(u))
+      : u.checking ? t('Установлена версия {version}', { version: current })
+      : u.error ? (u.checkedAt ? t('Последняя удачная проверка {ago}', { ago: agoSpan(u.checkedAt) }) : '')
+      : u.checkedAt ? `AeterMC ${current} · ${t('проверено {ago}', { ago: agoSpan(u.checkedAt) })}`
+      : t('Обновления ещё не проверялись');
+    action = { text: u.checking ? t('Проверяем…') : t('Проверить снова'), disabled: u.enabled === false || u.checking, run: () => api.checkUpdate() };
+  }
+  $('update-title').innerHTML = title;
+  $('update-sub').innerHTML = sub;
+  $('update-progress').classList.toggle('active', u.status === 'downloading');
+  $('update-progress-fill').style.width = updatePercent(u);
+  $('update-error').textContent = u.error || '';
+  $('update-auto').checked = state.settings.autoUpdate !== false;
+  const btn = $('update-action');
+  btn.textContent = action.text;
+  btn.disabled = !!action.disabled;
+  updateAction = action.run || null;
+  // a release found while the menu is open isn't in the notes loaded before it
+  if ((u.version || null) !== updateNotesVersion) loadReleaseNotes();
+}
+
+function openUpdateMenu() {
+  openModal('modal-update');
+  updateNotesVersion = undefined;
+  renderUpdateMenu();
+  // opening the menu checks again, unless the last check was a moment ago
+  const u = updateState;
+  if (u.enabled && !u.checking && u.status === 'idle' && !(u.checkedAt > Date.now() - 5 * 60 * 1000)) api.checkUpdate();
+}
+
+async function loadReleaseNotes() {
+  const version = updateNotesVersion = updateState.version || null;
+  const box = $('update-notes');
+  box.innerHTML = `<div class="release-empty">${t('Загружаем список изменений…')}</div>`;
+  let html;
+  try {
+    const releases = await api.getUpdateReleases();
+    html = releases.length ? releases.map(renderRelease).join('') : `<div class="release-empty">${t('Список изменений появится с выходом новой версии')}</div>`;
+  } catch (e) {
+    html = `<div class="release-empty">${t('Не удалось загрузить список изменений: {error}', { error: esc(errText(e)) })}</div>`;
+  }
+  // a newer load has started meanwhile
+  if (version === updateNotesVersion) box.innerHTML = html;
+}
+
+function renderRelease(r) {
+  const tag = r.version === updateState.current ? `<span class="tag">${t('Установлена')}</span>` : `<span class="tag tag-new">${t('Новая')}</span>`;
+  const date = r.date ? new Date(r.date).toLocaleDateString(i18n.locale(), { day: 'numeric', month: 'long', year: 'numeric' }).replace(/\s?г\.$/, '') : '';
+  return `<div class="release">
+    <div class="release-head"><span class="release-version">${esc(r.version)}</span>${tag}<span class="release-date">${esc(date)}</span></div>
+    <div class="release-notes">${releaseNotesHtml(r.notes) || `<p>${t('Без описания')}</p>`}</div>
+  </div>`;
+}
+
+/** Release notes are Markdown (the Build workflow writes "- " lists): lists, headings, **bold**, `code`, links as text. */
+function releaseNotesHtml(text) {
+  const inline = (s) => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  let html = '';
+  let list = false;
+  for (const line of String(text || '').split(/\r?\n/).map(l => l.trim())) {
+    const item = /^[-*] +(.*)/.exec(line);
+    if (item && !list) html += '<ul>';
+    if (!item && list) html += '</ul>';
+    list = !!item;
+    if (item) html += `<li>${inline(item[1])}</li>`;
+    else if (/^#+ /.test(line)) html += `<div class="release-heading">${inline(line.replace(/^#+ /, ''))}</div>`;
+    else if (line) html += `<p>${inline(line)}</p>`;
+  }
+  return list ? html + '</ul>' : html;
 }
 
 function setupUpdateButton() {
-  $('btn-update').addEventListener('click', async () => {
+  $('btn-update').addEventListener('click', openUpdateMenu);
+  $('btn-open-update').addEventListener('click', openUpdateMenu);
+  $('update-all').addEventListener('click', () => api.openUpdatePage(true));
+  $('update-action').addEventListener('click', async () => {
+    if (!updateAction) return;
     try {
-      const status = $('btn-update').dataset.status;
-      if (status === 'available') await api.downloadUpdate();
-      else if (status === 'ready') await api.restartToUpdate();
-      else if (status === 'manual') await api.openUpdatePage();
+      await updateAction();
     } catch (e) {
       toast(errText(e), 'error', 6000);
     }
   });
-  api.onUpdateState(renderUpdateButton);
-  api.getUpdateState().then(renderUpdateButton);
+  ['check-auto-update', 'update-auto'].forEach(id => $(id).addEventListener('change', () => {
+    const on = $(id).checked;
+    $('check-auto-update').checked = on;
+    $('update-auto').checked = on;
+    saveSettings({ autoUpdate: on });
+  }));
+  api.onUpdateState((update) => {
+    updateState = update;
+    renderUpdate();
+  });
+  api.getUpdateState().then((update) => {
+    updateState = update;
+    renderUpdate();
+  });
 }
 
 // ================= NAVIGATION =================
@@ -352,7 +499,7 @@ function showPage(name) {
 
 function applySidebarCollapsed(collapsed) {
   document.body.classList.toggle('sidebar-collapsed', collapsed);
-  $('btn-sidebar-toggle').title = collapsed ? 'Развернуть меню' : 'Свернуть меню';
+  $('btn-sidebar-toggle').title = collapsed ? t('Развернуть меню') : t('Свернуть меню');
 }
 
 function setupNavigation() {
@@ -433,7 +580,7 @@ function activeAccount() {
 
 function renderAccountChip() {
   const acc = activeAccount();
-  $('account-name').textContent = acc ? acc.username : 'Нет аккаунта';
+  $('account-name').textContent = acc ? acc.username : t('Нет аккаунта');
   $('account-type').textContent = acc ? accountTypeLabel(acc.type) : '';
   setAvatar($('account-avatar'), acc);
   renderGreeting();
@@ -454,7 +601,7 @@ function renderAccountList() {
         <span class="badge ${badge}">${accountTypeLabel(acc.type)}</span>
       </div>
       ${isActive ? icon('check', 'account-check') : ''}
-      ${state.accounts.length > 1 ? `<button class="icon-btn icon-btn-sm danger" title="Удалить">${icon('trash', 'ic-sm')}</button>` : ''}
+      ${state.accounts.length > 1 ? `<button class="icon-btn icon-btn-sm danger" title="${t('Удалить')}">${icon('trash', 'ic-sm')}</button>` : ''}
     `;
     setAvatar(row.querySelector('img'), acc);
 
@@ -462,14 +609,14 @@ function renderAccountList() {
       if (isActive) return;
       await api.setActiveAccount(acc.id);
       await loadAccounts();
-      toast(`Аккаунт: ${acc.username}`);
+      toast(t('Аккаунт: {name}', { name: acc.username }));
     });
 
     const del = row.querySelector('.danger');
     if (del) {
       del.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const ok = await dialog({ title: 'Удалить аккаунт?', text: `Аккаунт «${acc.username}» будет удалён из лаунчера.`, okText: 'Удалить', danger: true });
+        const ok = await dialog({ title: t('Удалить аккаунт?'), text: t('Аккаунт «{name}» будет удалён из лаунчера.', { name: acc.username }), okText: t('Удалить'), danger: true });
         if (!ok) return;
         await api.removeAccount(acc.id);
         await loadAccounts();
@@ -488,13 +635,13 @@ function setupAccounts() {
   const addOffline = async () => {
     const name = $('input-acc-offline-name').value.trim();
     if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) {
-      toast('Ник: 3–16 символов, латиница, цифры и «_»', 'error');
+      toast(t('Ник: 3–16 символов, латиница, цифры и «_»'), 'error');
       return;
     }
     await api.addOfflineAccount(name);
     $('input-acc-offline-name').value = '';
     await loadAccounts();
-    toast(`Аккаунт ${name} добавлен`);
+    toast(t('Аккаунт {name} добавлен', { name }));
   };
   $('btn-add-offline-acc').addEventListener('click', addOffline);
   $('input-acc-offline-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') addOffline(); });
@@ -511,7 +658,7 @@ function setupAccounts() {
   $('ms-copy').addEventListener('click', () => {
     if (!msLogin.code) return;
     navigator.clipboard.writeText(msLogin.code.userCode);
-    toast('Код скопирован');
+    toast(t('Код скопирован'));
   });
 
   const loginEly = async () => {
@@ -520,18 +667,18 @@ function setupAccounts() {
     const status = $('ely-status');
     if (!login || !pass) {
       status.className = 'form-status error';
-      status.textContent = 'Введите логин и пароль';
+      status.textContent = t('Введите логин и пароль');
       return;
     }
     $('btn-login-ely').disabled = true;
     status.className = 'form-status';
-    status.textContent = 'Проверка…';
+    status.textContent = t('Проверка…');
     try {
       const acc = await api.loginElyBy(login, pass);
       await loadAccounts();
       $('input-acc-ely-pass').value = '';
       status.textContent = '';
-      toast(`Вход выполнен: ${acc.username}`);
+      toast(t('Вход выполнен: {name}', { name: acc.username }));
       $('modal-accounts').classList.add('hidden');
     } catch (e) {
       status.className = 'form-status error';
@@ -566,7 +713,7 @@ async function startMicrosoftLogin() {
   $('ms-browser').disabled = true;
   $('ms-code').textContent = '········';
   $('ms-qr').innerHTML = '<div class="ms-qr-loading"></div>';
-  setMsStatus('Получение кода…');
+  setMsStatus(t('Получение кода…'));
 
   let code;
   try {
@@ -581,13 +728,13 @@ async function startMicrosoftLogin() {
 
   msLogin.code = code;
   $('ms-code').textContent = code.userCode;
-  $('ms-qr').innerHTML = `<img src="${code.qr}" alt="QR-код для входа">`;
+  $('ms-qr').innerHTML = `<img src="${code.qr}" alt="${t('QR-код для входа')}">`;
   $('ms-browser').disabled = false;
 
   const deadline = Date.now() + code.expiresIn * 1000;
   const tick = () => {
     const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
-    setMsStatus(`Ожидание входа… код действует ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`);
+    setMsStatus(t('Ожидание входа… код действует {time}', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` }));
   };
   tick();
   msLogin.timer = setInterval(tick, 1000);
@@ -599,7 +746,7 @@ async function startMicrosoftLogin() {
     await loadAccounts();
     $('modal-ms').classList.add('hidden');
     $('modal-accounts').classList.add('hidden');
-    toast(`Вход выполнен: ${res.account.username}`);
+    toast(t('Вход выполнен: {name}', { name: res.account.username }));
   } catch (e) {
     if (attempt !== msLogin.attempt) return;
     clearInterval(msLogin.timer);
@@ -629,7 +776,7 @@ async function loadSettings() {
   state.selected = s.selectedVersion || '';
 
   const total = s.totalSystemRam || 8;
-  $('system-ram-total').textContent = `В системе ${total} ГБ`;
+  $('system-ram-total').textContent = t('В системе {n} ГБ', { n: total });
   $('slider-max-ram').max = Math.max(2, Math.min(total, 32));
   $('slider-min-ram').max = Math.max(1, Math.min(total, 16));
   $('slider-max-ram').value = s.maxRam || 4;
@@ -645,6 +792,8 @@ async function loadSettings() {
   $('check-prism').checked = s.prismImport === true;
   $('check-show-console').checked = s.showConsole !== false;
   $('check-auto-updates').checked = s.autoCheckModUpdates !== false;
+  $('check-auto-update').checked = s.autoUpdate !== false;
+  $('select-language').value = i18n.language();
   applySidebarCollapsed(!!s.sidebarCollapsed);
   $('check-animations').checked = s.animations !== false;
   document.documentElement.classList.toggle('no-motion', s.animations === false);
@@ -658,8 +807,8 @@ async function loadSettings() {
 }
 
 function updateRamLabels() {
-  $('val-max-ram').textContent = `${$('slider-max-ram').value} ГБ`;
-  $('val-min-ram').textContent = `${$('slider-min-ram').value} ГБ`;
+  $('val-max-ram').textContent = t('{n} ГБ', { n: $('slider-max-ram').value });
+  $('val-min-ram').textContent = t('{n} ГБ', { n: $('slider-min-ram').value });
 }
 
 async function saveSettings(partial) {
@@ -667,7 +816,7 @@ async function saveSettings(partial) {
     await api.saveSettings(partial);
     Object.assign(state.settings, partial);
   } catch (e) {
-    toast(`Не удалось сохранить настройки: ${errText(e)}`, 'error');
+    toast(t('Не удалось сохранить настройки: {error}', { error: errText(e) }), 'error');
   }
 }
 
@@ -723,13 +872,15 @@ function setupSettings() {
     await loadVersionsAndInstances();
   });
 
+  // the main process reloads the windows in the new language
+  $('select-language').addEventListener('change', () => saveSettings({ language: $('select-language').value }));
   $('check-snapshots').addEventListener('change', async () => {
     await saveSettings({ showSnapshots: $('check-snapshots').checked });
     loadVersionsAndInstances();
   });
 
   $('btn-browse-java').addEventListener('click', async () => {
-    const filePath = await api.browseFile({ title: 'Выберите java.exe', filters: [{ name: 'Java', extensions: ['exe'] }] });
+    const filePath = await api.browseFile({ title: t('Выберите java.exe'), filters: [{ name: 'Java', extensions: ['exe'] }] });
     if (!filePath) return;
     ensureJavaOption(filePath);
     $('select-java').value = filePath;
@@ -740,18 +891,18 @@ function setupSettings() {
     $('btn-rescan-java').classList.add('spinning');
     await loadJavaList(true);
     $('btn-rescan-java').classList.remove('spinning');
-    toast(`Найдено Java: ${state.javaList.length}`);
+    toast(t('Найдено Java: {n}', { n: state.javaList.length }));
   });
 
   $('btn-browse-gamedir').addEventListener('click', async () => {
-    const folder = await api.browseFolder({ title: 'Папка .minecraft' });
+    const folder = await api.browseFolder({ title: t('Папка .minecraft') });
     if (!folder) return;
     $('input-game-dir').value = folder;
     $('game-dir-hint').textContent = folder;
     await saveSettings({ gameDir: folder });
     await loadVersionsAndInstances();
     loadMods();
-    toast('Папка игры изменена');
+    toast(t('Папка игры изменена'));
   });
 }
 
@@ -762,7 +913,7 @@ async function openPrismImport() {
   const list = $('prism-list');
   $('prism-status').textContent = '';
   $('prism-progress').classList.add('hidden');
-  list.innerHTML = '<div class="empty empty-sm"><p>Поиск сборок…</p></div>';
+  list.innerHTML = `<div class="empty empty-sm"><p>${t('Поиск сборок…')}</p></div>`;
   openModal('modal-prism');
 
   let builds = [];
@@ -771,7 +922,7 @@ async function openPrismImport() {
   } catch (e) {}
   list.innerHTML = '';
   if (!builds.length) {
-    list.innerHTML = '<div class="empty empty-sm"><p>Сборки Prism Launcher не найдены</p></div>';
+    list.innerHTML = `<div class="empty empty-sm"><p>${t('Сборки Prism Launcher не найдены')}</p></div>`;
     $('prism-start').disabled = true;
     return;
   }
@@ -784,7 +935,7 @@ async function openPrismImport() {
       <input type="checkbox" value="${esc(b.key)}" ${b.alreadyImported ? '' : 'checked'}>
       <span class="grow">
         <div>${esc(b.name)}</div>
-        <div class="meta">${esc(loader)}Minecraft ${esc(b.version)}${b.modCount ? ` · ${pluralize(b.modCount, ['мод', 'мода', 'модов'])}` : ''}${b.alreadyImported ? ' · уже импортирована' : ''}</div>
+        <div class="meta">${esc(loader)}Minecraft ${esc(b.version)}${b.modCount ? ` · ${pluralize(b.modCount, ['мод', 'мода', 'модов'])}` : ''}${b.alreadyImported ? ` · ${t('уже импортирована')}` : ''}</div>
       </span>
       <span class="size">${formatSize(b.sizeBytes)}</span>
     `;
@@ -797,12 +948,12 @@ async function openPrismImport() {
 function updatePrismStartButton() {
   const n = document.querySelectorAll('#prism-list input:checked').length;
   $('prism-start').disabled = !n || prismImporting;
-  $('prism-start').textContent = n ? `Скопировать (${n})` : 'Скопировать';
+  $('prism-start').textContent = n ? `${t('Скопировать')} (${n})` : t('Скопировать');
 }
 
 function formatSize(bytes) {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} ГБ`;
-  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} МБ`;
+  if (bytes >= 1024 ** 3) return t('{n} ГБ', { n: (bytes / 1024 ** 3).toFixed(1) });
+  return t('{n} МБ', { n: Math.max(1, Math.round(bytes / 1024 ** 2)) });
 }
 
 async function startPrismImport() {
@@ -819,7 +970,7 @@ async function startPrismImport() {
 
   const off = api.onPrismImportProgress((p) => {
     const pct = p.totalBytes ? Math.round((p.copiedBytes / p.totalBytes) * 100) : 100;
-    $('prism-progress-text').textContent = `${names[p.index]} (${p.index + 1} из ${p.count}) · ${formatSize(p.copiedBytes)} из ${formatSize(p.totalBytes)}`;
+    $('prism-progress-text').textContent = `${names[p.index]} (${t('{n} из {total}', { n: p.index + 1, total: p.count })}) · ${t('{n} из {total}', { n: formatSize(p.copiedBytes), total: formatSize(p.totalBytes) })}`;
     $('prism-progress-percent').textContent = `${pct}%`;
     $('prism-progress-fill').style.width = `${pct}%`;
   });
@@ -829,7 +980,7 @@ async function startPrismImport() {
     $('modal-prism').classList.add('hidden');
     await loadVersionsAndInstances();
     if (imported[0]) selectProfile(imported[0].id);
-    toast(`Импортировано сборок: ${imported.length}`);
+    toast(t('Импортировано сборок: {n}', { n: imported.length }));
     showPage('instances');
   } catch (e) {
     $('prism-status').className = 'form-status error';
@@ -848,7 +999,7 @@ function setupPrismImport() {
   $('prism-start').addEventListener('click', startPrismImport);
   const close = () => {
     if (prismImporting) {
-      toast('Дождитесь окончания копирования');
+      toast(t('Дождитесь окончания копирования'));
       return;
     }
     $('modal-prism').classList.add('hidden');
@@ -868,11 +1019,11 @@ function renderThemeGrid(grid, mode) {
   const themes = window.MCL_THEMES || [];
   const active = currentThemeId();
   grid.innerHTML = '';
-  themes.filter(t => t.mode === mode).forEach(t => {
-    const p = t.preview;
+  themes.filter(theme => theme.mode === mode).forEach(theme => {
+    const p = theme.preview;
     const btn = document.createElement('button');
-    btn.className = `theme-swatch ${t.id === active ? 'active' : ''}`;
-    btn.title = `${mode === 'dark' ? 'Тёмная' : 'Светлая'} ${t.name.toLowerCase()}`;
+    btn.className = `theme-swatch ${theme.id === active ? 'active' : ''}`;
+    btn.title = `${mode === 'dark' ? t('Тёмная') : t('Светлая')} ${t(theme.name).toLowerCase()}`;
     btn.innerHTML = `
       <span class="tsw" style="background:${p.bg}">
         <span class="tsw-side" style="background:${p.side}"></span>
@@ -883,9 +1034,9 @@ function renderThemeGrid(grid, mode) {
         </span>
         <span class="tsw-check" style="background:${p.accent};color:${p.bg}">${icon('check')}</span>
       </span>
-      <span class="tsw-name">${esc(t.name)}</span>
+      <span class="tsw-name">${esc(t(theme.name))}</span>
     `;
-    btn.addEventListener('click', () => applyTheme(t.id));
+    btn.addEventListener('click', () => applyTheme(theme.id));
     grid.appendChild(btn);
   });
 }
@@ -964,13 +1115,13 @@ function renderSetupStep(direction = 1) {
   const last = setup.index === setup.steps.length - 1;
   $('setup-back').classList.toggle('hidden', setup.index === 0 || last);
   $('setup-skip').classList.toggle('hidden', last);
-  $('setup-next').textContent = setup.index === 0 ? 'Начать' : last ? 'Перейти к лаунчеру' : 'Далее';
+  $('setup-next').textContent = setup.index === 0 ? t('Начать') : last ? t('Перейти к лаунчеру') : t('Далее');
 
   if (name === 'account') renderSetupAccount();
   if (name === 'theme') renderSetupThemes();
   if (name === 'java') renderSetupJava();
   if (name === 'prism') {
-    $('setup-prism-text').textContent = `Найдено сборок в Prism Launcher: ${setup.prismCount}. Как их подключить?`;
+    $('setup-prism-text').textContent = t('Найдено сборок в Prism Launcher: {n}. Как их подключить?', { n: setup.prismCount });
     document.querySelectorAll('[data-prism]').forEach(b => b.classList.toggle('selected', b.dataset.prism === setup.prismChoice));
   }
   if (name === 'memory') renderSetupMemory();
@@ -979,8 +1130,8 @@ function renderSetupStep(direction = 1) {
 function renderSetupAccount() {
   const acc = activeAccount();
   $('setup-account-current').innerHTML = acc
-    ? `<img alt=""><span><b>${esc(acc.username)}</b><small>${accountTypeLabel(acc.type)} · выбран сейчас</small></span>`
-    : '<span><small>Аккаунт ещё не добавлен</small></span>';
+    ? `<img alt=""><span><b>${esc(acc.username)}</b><small>${accountTypeLabel(acc.type)} · ${t('выбран сейчас')}</small></span>`
+    : `<span><small>${t('Аккаунт ещё не добавлен')}</small></span>`;
   const img = $('setup-account-current').querySelector('img');
   if (img) setAvatar(img, acc);
 }
@@ -992,7 +1143,7 @@ function renderSetupThemes() {
 
 async function renderSetupJava() {
   const list = $('setup-java-list');
-  if (!setup.java.length) list.innerHTML = '<div class="setup-row"><span class="muted">Проверка…</span></div>';
+  if (!setup.java.length) list.innerHTML = `<div class="setup-row"><span class="muted">${t('Проверка…')}</span></div>`;
   try {
     setup.java = await api.getJavaRequirements();
   } catch (e) {
@@ -1005,7 +1156,7 @@ async function renderSetupJava() {
     row.dataset.major = j.major;
     row.innerHTML = j.path
       ? `<span class="setup-row-icon ok">${icon('check', 'ic-sm')}</span><span class="grow"><b>Java ${j.major}</b><small title="${esc(j.path)}">${esc(j.path)}</small></span>`
-      : `<span class="setup-row-icon">${icon('coffee', 'ic-sm')}</span><span class="grow"><b>Java ${j.major}</b><small>Не найдена</small></span><button class="btn btn-secondary btn-sm">Скачать</button>`;
+      : `<span class="setup-row-icon">${icon('coffee', 'ic-sm')}</span><span class="grow"><b>Java ${j.major}</b><small>${t('Не найдена')}</small></span><button class="btn btn-secondary btn-sm">${t('Скачать')}</button>`;
     const btn = row.querySelector('button');
     if (btn) btn.addEventListener('click', () => installJavaFromUi(j.major));
     list.appendChild(row);
@@ -1023,7 +1174,7 @@ async function installJavaFromUi(major) {
   if (btn) btn.disabled = true;
   try {
     await api.installJava(major);
-    toast(`Java ${major} установлена`);
+    toast(t('Java {major} установлена', { major }));
     await loadJavaList(true);
     if (!$('setup').classList.contains('hidden')) renderSetupJava();
   } catch (e) {
@@ -1038,8 +1189,8 @@ async function installJavaFromUi(major) {
 function onJavaProgress(p) {
   const row = document.querySelector(`.setup-row[data-major="${p.major}"]`);
   const text = p.stage === 'download' && p.total
-    ? `Скачивание… ${Math.round((p.received / p.total) * 100)}% из ${formatSize(p.total)}`
-    : p.stage === 'extract' ? 'Распаковка…' : p.stage === 'done' ? 'Готово' : 'Подготовка…';
+    ? t('Скачивание… {percent}% из {size}', { percent: Math.round((p.received / p.total) * 100), size: formatSize(p.total) })
+    : p.stage === 'extract' ? t('Распаковка…') : p.stage === 'done' ? t('Готово') : t('Подготовка…');
   if (row) row.querySelector('small').textContent = text;
   // the same progress goes to the launch panel when Java is fetched right before a game start
   if (state.isLaunching) setProgress(p.total ? Math.round((p.received / p.total) * 100) : null, `Java ${p.major}: ${text.toLowerCase()}`);
@@ -1050,8 +1201,8 @@ function renderSetupMemory() {
   const slider = $('setup-ram');
   slider.max = Math.max(4, Math.min(total, 32));
   slider.value = state.settings.maxRam || Math.min(8, Math.max(2, Math.floor(total / 2)));
-  $('setup-ram-value').textContent = `${slider.value} ГБ`;
-  $('setup-ram-text').textContent = `Сколько оперативной памяти отдавать игре. В компьютере ${total} ГБ.`;
+  $('setup-ram-value').textContent = t('{n} ГБ', { n: slider.value });
+  $('setup-ram-text').textContent = t('Сколько оперативной памяти отдавать игре. В компьютере {n} ГБ.', { n: total });
 }
 
 async function setupNext() {
@@ -1103,7 +1254,7 @@ function setupSetup() {
   const addOffline = async () => {
     const name = $('setup-offline-name').value.trim();
     if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) {
-      toast('Ник: 3–16 символов, латиница, цифры и «_»', 'error');
+      toast(t('Ник: 3–16 символов, латиница, цифры и «_»'), 'error');
       return;
     }
     await api.addOfflineAccount(name);
@@ -1117,7 +1268,7 @@ function setupSetup() {
     setup.prismChoice = b.dataset.prism;
     document.querySelectorAll('[data-prism]').forEach(x => x.classList.toggle('selected', x === b));
   }));
-  $('setup-ram').addEventListener('input', () => { $('setup-ram-value').textContent = `${$('setup-ram').value} ГБ`; });
+  $('setup-ram').addEventListener('input', () => { $('setup-ram-value').textContent = t('{n} ГБ', { n: $('setup-ram').value }); });
   api.onJavaInstallProgress(onJavaProgress);
 }
 
@@ -1127,7 +1278,7 @@ function ensureJavaOption(p) {
   if ([...select.options].some(o => o.value === p)) return;
   const opt = document.createElement('option');
   opt.value = p;
-  opt.textContent = `Свой путь — ${p}`;
+  opt.textContent = t('Свой путь — {path}', { path: p });
   select.appendChild(opt);
 }
 
@@ -1141,7 +1292,7 @@ async function loadJavaList(force = false) {
   select.innerHTML = '';
   const auto = document.createElement('option');
   auto.value = '';
-  auto.textContent = state.javaList.length ? 'Автоматически (по версии игры)' : 'Автоматически — Java не найдена';
+  auto.textContent = state.javaList.length ? t('Автоматически (по версии игры)') : t('Автоматически — Java не найдена');
   select.appendChild(auto);
   state.javaList.forEach(j => {
     const opt = document.createElement('option');
@@ -1164,7 +1315,7 @@ async function loadVersionsAndInstances() {
     state.versions = versionsRes.value.versions || [];
     state.latestRelease = versionsRes.value.latestRelease || '';
   } else {
-    toast(`Не удалось загрузить версии: ${errText(versionsRes.reason)}`, 'error');
+    toast(t('Не удалось загрузить версии: {error}', { error: errText(versionsRes.reason) }), 'error');
   }
   state.instances = instancesRes.status === 'fulfilled' ? instancesRes.value : [];
 
@@ -1199,10 +1350,9 @@ function instanceMeta(inst) {
   return parts.join(' · ');
 }
 
-function pluralize(n, [one, few, many]) {
-  const m10 = n % 10, m100 = n % 100;
-  const word = m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-  return `${n} ${word}`;
+/** "12 модов": Russian forms for 1, 2 and 5; the dictionary has the other languages' ones. */
+function pluralize(n, forms) {
+  return i18n.plural(n, forms);
 }
 
 /** Icon color the hero landscape is tinted with: the block's top face, or the accent for pictures. */
@@ -1223,16 +1373,16 @@ function renderHero() {
     tags.push(`Minecraft ${inst.version}`);
     if (hasMods(inst)) tags.push(pluralize(inst.modCount, ['мод', 'мода', 'модов']));
     meta.push(lastPlayedText(inst));
-    if (inst.totalPlaytime) meta.push(`${formatPlaytime(inst.totalPlaytime)} в игре`);
+    if (inst.totalPlaytime) meta.push(t('{time} в игре', { time: formatPlaytime(inst.totalPlaytime) }));
   } else if (state.selected) {
     const v = findVersion(state.selected);
     $('hero-icon').innerHTML = instanceIconHtml({ id: 'vanilla', name: 'vanilla' });
     $('hero-title').textContent = v && v.inheritsFrom ? state.selected : `Minecraft ${state.selected}`;
-    tags.push(v && v.inheritsFrom ? `на основе ${v.inheritsFrom}` : 'Без сборки');
-    meta.push(v && v.installed ? 'Установлена' : 'Скачается при запуске');
+    tags.push(v && v.inheritsFrom ? t('на основе {version}', { version: v.inheritsFrom }) : t('Без сборки'));
+    meta.push(v && v.installed ? t('Установлена') : t('Скачается при запуске'));
   } else {
     $('hero-icon').innerHTML = '';
-    $('hero-title').textContent = 'Выберите сборку';
+    $('hero-title').textContent = t('Выберите сборку');
   }
   $('hero').style.setProperty('--hero-tint', heroTint(inst || (state.selected ? { id: 'vanilla', name: 'vanilla' } : null)));
   $('hero-tags').innerHTML = tags.map(t => `<span class="hero-tag">${esc(t)}</span>`).join('');
@@ -1242,9 +1392,9 @@ function renderHero() {
 function emptyBuilds() {
   return `
     <div class="empty">
-      <h3>Сборок пока нет</h3>
-      <p>Сборка — отдельная папка со своими модами, мирами и настройками.</p>
-      <button class="btn btn-primary" id="btn-empty-new-inst">${icon('plus', 'ic-sm')}Новая сборка</button>
+      <h3>${t('Сборок пока нет')}</h3>
+      <p>${t('Сборка — отдельная папка со своими модами, мирами и настройками.')}</p>
+      <button class="btn btn-primary" id="btn-empty-new-inst">${icon('plus', 'ic-sm')}${t('Новая сборка')}</button>
     </div>`;
 }
 
@@ -1266,7 +1416,7 @@ function renderRecent() {
     card.innerHTML = `
       <div class="icon-play">
         ${instanceIconHtml(inst)}
-        <button class="icon-play-btn" title="Играть в «${esc(inst.name)}»">${icon('play')}</button>
+        <button class="icon-play-btn" title="${t('Играть в «{name}»', { name: esc(inst.name) })}">${icon('play')}</button>
       </div>
       <div class="rcard-title">${esc(inst.name)}</div>
       <div class="rcard-sub">${esc(hasMods(inst) ? `${LOADER_LABELS[inst.loader] || inst.loader} ${inst.loaderVersion || ''}`.trim() + ` · ${inst.version}` : `Minecraft ${inst.version}`)}</div>
@@ -1289,7 +1439,7 @@ function renderRecent() {
   if (recent.length >= RECENT_SLOTS) return;
   const add = document.createElement('button');
   add.className = 'rcard rcard-new';
-  add.innerHTML = `${icon('plus')}<span>Новая сборка</span>`;
+  add.innerHTML = `${icon('plus')}<span>${t('Новая сборка')}</span>`;
   add.addEventListener('click', openNewInstanceModal);
   list.appendChild(add);
 }
@@ -1297,13 +1447,13 @@ function renderRecent() {
 // ---------- home: greeting, week chart, tips ----------
 function renderGreeting() {
   const h = new Date().getHours();
-  const hello = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : h < 23 ? 'Добрый вечер' : 'Доброй ночи';
+  const hello = h < 5 ? t('Доброй ночи') : h < 12 ? t('Доброе утро') : h < 18 ? t('Добрый день') : h < 23 ? t('Добрый вечер') : t('Доброй ночи');
   const acc = activeAccount();
   $('home-greeting').textContent = acc ? `${hello}, ${acc.username}` : hello;
 }
 setInterval(renderGreeting, 10 * 60 * 1000);
 
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const WEEKDAYS = [t('Пн'), t('Вт'), t('Ср'), t('Чт'), t('Пт'), t('Сб'), t('Вс')];
 
 function dayKey(date) {
   const p = (n) => String(n).padStart(2, '0');
@@ -1311,10 +1461,10 @@ function dayKey(date) {
 }
 
 function formatWeekTotal(seconds) {
-  if (seconds < 60) return '0 ч';
-  if (seconds < 3600) return `${Math.round(seconds / 60)} мин`;
+  if (seconds < 60) return t('0 ч');
+  if (seconds < 3600) return t('{m} мин', { m: Math.round(seconds / 60) });
   const h = seconds / 3600;
-  return `${h < 10 ? Math.round(h * 10) / 10 : Math.round(h)} ч`.replace('.', ',');
+  return t('{h} ч', { h: (h < 10 ? Math.round(h * 10) / 10 : Math.round(h)).toLocaleString(i18n.locale()) });
 }
 
 /** Monday to Sunday of the current week, from the per-day log the main process keeps. */
@@ -1329,20 +1479,20 @@ async function loadWeekStats() {
   const max = Math.max(...week.map(d => d.seconds), 1);
   $('week-total').textContent = formatWeekTotal(week.reduce((sum, d) => sum + d.seconds, 0));
   $('week-chart').innerHTML = week.map(d => `
-    <div class="week-day ${d.today ? 'today' : ''}" title="${d.date.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}: ${d.seconds ? formatPlaytime(d.seconds) : 'не играли'}">
+    <div class="week-day ${d.today ? 'today' : ''}" title="${d.date.toLocaleDateString(i18n.locale(), { weekday: 'long', day: 'numeric', month: 'long' })}: ${d.seconds ? formatPlaytime(d.seconds) : t('не играли')}">
       <div class="week-bar-wrap"><div class="week-bar" style="height:${Math.round(d.seconds / max * 100)}%"></div></div>
       <span class="week-label">${d.label}</span>
     </div>`).join('');
 }
 
 const TIPS = [
-  'Перетащи .jar на страницу модов сборки — мод добавится сам.',
-  'Нажми на иконку сборки на главной, чтобы сменить её на блок или свою картинку.',
-  'Сборки из Prism Launcher можно не копировать: включи синхронизацию в настройках.',
-  'Лаунчер сам переносит бинды и настройки графики между сборками — это настраивается в «Переносе настроек игры».',
-  'Нужную Java лаунчер подберёт и скачает сам под каждую версию Minecraft.',
-  'Все скриншоты из всех сборок собраны во вкладке «Скриншоты».',
-  'Консоль можно вынести в отдельное окно и держать поверх игры.'
+  t('Перетащи .jar на страницу модов сборки — мод добавится сам.'),
+  t('Нажми на иконку сборки на главной, чтобы сменить её на блок или свою картинку.'),
+  t('Сборки из Prism Launcher можно не копировать: включи синхронизацию в настройках.'),
+  t('Лаунчер сам переносит бинды и настройки графики между сборками — это настраивается в «Переносе настроек игры».'),
+  t('Нужную Java лаунчер подберёт и скачает сам под каждую версию Minecraft.'),
+  t('Все скриншоты из всех сборок собраны во вкладке «Скриншоты».'),
+  t('Консоль можно вынести в отдельное окно и держать поверх игры.')
 ];
 
 function renderTip() {
@@ -1364,18 +1514,18 @@ function loaderLine(inst) {
 }
 
 function syncMark(inst) {
-  return inst.isPrism ? `<span class="sync-mark" title="Синхронизируется с Prism Launcher">${icon('link')}</span>` : '';
+  return inst.isPrism ? `<span class="sync-mark" title="${t('Синхронизируется с Prism Launcher')}">${icon('link')}</span>` : '';
 }
 
 function buildActionsHtml(inst) {
   return `
     <div class="row-actions">
-      ${hasMods(inst) ? `<button class="icon-btn" data-act="mods" title="Моды">${icon('puzzle')}</button>` : ''}
-      <button class="icon-btn" data-act="folder" title="Открыть папку">${icon('folder')}</button>
-      <button class="icon-btn" data-act="sync" title="Перенести настройки из другой сборки">${icon('transfer')}</button>
-      <button class="icon-btn" data-act="icon" title="Иконка">${icon('image')}</button>
-      <button class="icon-btn" data-act="copy" title="Копировать">${icon('copy')}</button>
-      ${inst.isPrism ? '' : `<button class="icon-btn danger" data-act="delete" title="Удалить">${icon('trash')}</button>`}
+      ${hasMods(inst) ? `<button class="icon-btn" data-act="mods" title="${t('Моды')}">${icon('puzzle')}</button>` : ''}
+      <button class="icon-btn" data-act="folder" title="${t('Открыть папку')}">${icon('folder')}</button>
+      <button class="icon-btn" data-act="sync" title="${t('Перенести настройки из другой сборки')}">${icon('transfer')}</button>
+      <button class="icon-btn" data-act="icon" title="${t('Иконка')}">${icon('image')}</button>
+      <button class="icon-btn" data-act="copy" title="${t('Копировать')}">${icon('copy')}</button>
+      ${inst.isPrism ? '' : `<button class="icon-btn danger" data-act="delete" title="${t('Удалить')}">${icon('trash')}</button>`}
     </div>`;
 }
 
@@ -1398,13 +1548,13 @@ function buildActions(inst) {
 /** Card "⋯" menu: the same actions as the list row buttons. */
 function buildMenuItems(inst, acts) {
   return [
-    hasMods(inst) && { label: 'Моды', icon: 'puzzle', run: acts.mods },
-    { label: 'Открыть папку', icon: 'folder', run: acts.folder },
-    { label: 'Перенести настройки из другой сборки', icon: 'transfer', run: acts.sync },
-    { label: 'Сменить иконку', icon: 'image', run: acts.icon },
-    { label: 'Копировать', icon: 'copy', run: acts.copy },
+    hasMods(inst) && { label: t('Моды'), icon: 'puzzle', run: acts.mods },
+    { label: t('Открыть папку'), icon: 'folder', run: acts.folder },
+    { label: t('Перенести настройки из другой сборки'), icon: 'transfer', run: acts.sync },
+    { label: t('Сменить иконку'), icon: 'image', run: acts.icon },
+    { label: t('Копировать'), icon: 'copy', run: acts.copy },
     !inst.isPrism && 'separator',
-    !inst.isPrism && { label: 'Удалить', icon: 'trash', run: acts.delete, danger: true }
+    !inst.isPrism && { label: t('Удалить'), icon: 'trash', run: acts.delete, danger: true }
   ].filter(Boolean);
 }
 
@@ -1466,7 +1616,7 @@ async function applyInstanceIcon(choice) {
 
 function setupIconPicker() {
   $('icon-picker-upload').addEventListener('click', async () => {
-    const file = await api.browseFile({ title: 'Картинка для иконки', filters: [{ name: 'Изображения', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'ico'] }] });
+    const file = await api.browseFile({ title: t('Картинка для иконки'), filters: [{ name: t('Изображения'), extensions: ['png', 'jpg', 'jpeg', 'bmp', 'ico'] }] });
     if (file) applyInstanceIcon({ file });
   });
   $('icon-picker-reset').addEventListener('click', () => applyInstanceIcon(null));
@@ -1476,26 +1626,26 @@ function setupIconPicker() {
 }
 
 async function copyBuild(inst) {
-  const name = await dialog({ title: 'Копировать сборку', text: 'Название новой сборки:', input: `${inst.name} (копия)`, okText: 'Копировать' });
+  const name = await dialog({ title: t('Копировать сборку'), text: t('Название новой сборки:'), input: t('{name} (копия)', { name: inst.name }), okText: t('Копировать') });
   if (!name) return;
   try {
-    toast('Копирование…');
+    toast(t('Копирование…'));
     const copy = await api.copyInstance(inst.id, name);
     await loadVersionsAndInstances();
     if (copy) selectProfile(copy.id);
-    toast(`Сборка «${name}» создана`);
+    toast(t('Сборка «{name}» создана', { name }));
   } catch (e) {
     toast(errText(e), 'error');
   }
 }
 
 async function deleteBuild(inst) {
-  const ok = await dialog({ title: 'Удалить сборку?', text: `«${inst.name}» будет удалена вместе с модами и мирами. Это нельзя отменить.`, okText: 'Удалить', danger: true });
+  const ok = await dialog({ title: t('Удалить сборку?'), text: t('«{name}» будет удалена вместе с модами и мирами. Это нельзя отменить.', { name: inst.name }), okText: t('Удалить'), danger: true });
   if (!ok) return;
   try {
     await api.deleteInstance(inst.id);
     await loadVersionsAndInstances();
-    toast('Сборка удалена');
+    toast(t('Сборка удалена'));
   } catch (e) {
     toast(errText(e), 'error');
   }
@@ -1602,8 +1752,8 @@ function renderInstanceGrid() {
         </div>
         <div class="bcard-stats">${buildStats(inst).map(s => `<span>${s}</span>`).join('')}</div>
         <div class="bcard-foot">
-          <button class="btn btn-secondary btn-sm btn-row-play" data-act="play">${icon('play', 'ic-xs')}Играть</button>
-          <button class="icon-btn bcard-more" data-act="menu" title="Действия" aria-haspopup="menu">${icon('more')}</button>
+          <button class="btn btn-secondary btn-sm btn-row-play" data-act="play">${icon('play', 'ic-xs')}${t('Играть')}</button>
+          <button class="icon-btn bcard-more" data-act="menu" title="${t('Действия')}" aria-haspopup="menu">${icon('more')}</button>
         </div>
       `;
     } else {
@@ -1619,7 +1769,7 @@ function renderInstanceGrid() {
           <div class="muted-2">${inst.totalPlaytime ? formatPlaytime(inst.totalPlaytime) : ''}</div>
         </div>
         ${buildActionsHtml(inst)}
-        <button class="btn btn-secondary btn-sm btn-row-play" data-act="play">${icon('play', 'ic-xs')}Играть</button>
+        <button class="btn btn-secondary btn-sm btn-row-play" data-act="play">${icon('play', 'ic-xs')}${t('Играть')}</button>
       `;
     }
     bindBuildActions(el, inst);
@@ -1669,7 +1819,7 @@ function setupInstances() {
   $('select-inst-version').addEventListener('change', refreshLoaderChoice);
 
   $('btn-create-instance').addEventListener('click', async () => {
-    const name = $('input-inst-name').value.trim() || 'Моя сборка';
+    const name = $('input-inst-name').value.trim() || t('Моя сборка');
     const version = $('select-inst-version').value;
     const loader = state.newInstanceLoader;
     const loaderVersion = loader === 'vanilla' ? '' : $('select-inst-loader-version').value;
@@ -1677,14 +1827,14 @@ function setupInstances() {
     newInstanceForm.creating = true;
     updateCreateButton();
     status.className = 'form-status';
-    status.textContent = loader === 'vanilla' ? 'Создание…' : `Установка ${LOADER_LABELS[loader]} ${loaderVersion}…`;
+    status.textContent = loader === 'vanilla' ? t('Создание…') : t('Установка {loader} {version}…', { loader: LOADER_LABELS[loader], version: loaderVersion });
     const stopProgress = api.onLoaderInstallProgress((text) => { status.textContent = text; });
     try {
       const inst = await api.createInstance({ name, version, loader, loaderVersion });
       $('modal-instance').classList.add('hidden');
       await loadVersionsAndInstances();
       if (inst) selectProfile(inst.id);
-      toast(`Сборка «${name}» создана`);
+      toast(t('Сборка «{name}» создана', { name }));
     } catch (e) {
       status.className = 'form-status error';
       status.textContent = errText(e);
@@ -1725,7 +1875,7 @@ function refreshLoaderChoice() {
     loaderVersionList(loader, mcVersion).then(list => {
       if ($('select-inst-version').value !== mcVersion || list.length) return;
       btn.classList.add('unavailable');
-      btn.title = `${LOADER_LABELS[loader]} нет для Minecraft ${mcVersion}`;
+      btn.title = t('{loader} нет для Minecraft {version}', { loader: LOADER_LABELS[loader], version: mcVersion });
     }).catch(() => {});
   });
   renderLoaderVersions();
@@ -1750,17 +1900,17 @@ async function renderLoaderVersions() {
   if (loader === 'vanilla') return;
 
   select.disabled = true;
-  select.innerHTML = '<option>Загрузка…</option>';
+  select.innerHTML = `<option>${t('Загрузка…')}</option>`;
   try {
     const list = await loaderVersionList(loader, mcVersion);
     if (token !== newInstanceForm.token) return;
     if (!list.length) {
       select.innerHTML = '<option>—</option>';
-      setStatus(`${LOADER_LABELS[loader]} нет для Minecraft ${mcVersion}`, true);
+      setStatus(t('{loader} нет для Minecraft {version}', { loader: LOADER_LABELS[loader], version: mcVersion }), true);
       return;
     }
     select.innerHTML = list.map(v =>
-      `<option value="${esc(v.version)}">${esc(v.version)}${v.recommended ? ' — рекомендуемая' : ''}</option>`).join('');
+      `<option value="${esc(v.version)}">${esc(v.version)}${v.recommended ? ` — ${t('рекомендуемая')}` : ''}</option>`).join('');
     select.value = (list.find(v => v.recommended) || list[0]).version;
     select.disabled = false;
     newInstanceForm.loaderReady = true;
@@ -1768,7 +1918,7 @@ async function renderLoaderVersions() {
   } catch (e) {
     if (token !== newInstanceForm.token) return;
     select.innerHTML = '<option>—</option>';
-    setStatus(`Не удалось получить версии ${LOADER_LABELS[loader]}: ${errText(e)}`, true);
+    setStatus(t('Не удалось получить версии {loader}: {error}', { loader: LOADER_LABELS[loader], error: errText(e) }), true);
   }
 }
 
@@ -1802,7 +1952,7 @@ function openBuildMods(id, { filter = null } = {}) {
   $('mods-head-icon').innerHTML = instanceIconHtml(inst);
   $('mods-title').textContent = inst.name;
   $('mods-subtitle').textContent = instanceMeta(inst);
-  $('modrinth-context').textContent = `Только версии для Minecraft ${inst.version} и ${LOADER_LABELS[inst.loader] || inst.loader}`;
+  $('modrinth-context').textContent = t('Только версии для Minecraft {version} и {loader}', { version: inst.version, loader: LOADER_LABELS[inst.loader] || inst.loader });
   if (changed) {
     state.mods = [];
     modsUi.scanned = false;
@@ -1841,7 +1991,7 @@ async function scanMods(force = false) {
   modsUi.scanning = true;
   $('btn-check-updates').disabled = true;
   $('btn-check-updates').classList.add('spinning');
-  setScanStatus(force ? 'Проверка обновлений…' : 'Сверка с Modrinth…');
+  setScanStatus(force ? t('Проверка обновлений…') : t('Сверка с Modrinth…'));
   try {
     const res = await api.scanInstanceMods(inst.id, force);
     if (state.modsTarget !== inst.id) return;
@@ -1851,7 +2001,7 @@ async function scanMods(force = false) {
     renderModsList();
     if (force && res.online) {
       const n = res.mods.filter(m => m.update).length;
-      toast(n ? `Доступно обновлений: ${n}` : 'Все моды актуальны');
+      toast(n ? t('Доступно обновлений: {n}', { n }) : t('Все моды актуальны'));
     }
   } catch (e) {
     setScanStatus(errText(e));
@@ -1889,13 +2039,13 @@ function renderModsList() {
 
   const updateAll = $('btn-update-all');
   updateAll.classList.toggle('hidden', !updates.length);
-  updateAll.querySelector('span').textContent = `Обновить все (${updates.length})`;
+  updateAll.querySelector('span').textContent = `${t('Обновить все')} (${updates.length})`;
 
   if (modsUi.scanned) {
     const known = mods.filter(m => m.projectId).length;
     setScanStatus(modsUi.online
-      ? `${pluralize(mods.length, ['мод', 'мода', 'модов'])}, ${known} найдено на Modrinth · проверено для Minecraft ${inst ? inst.version : ''}`
-      : 'Modrinth недоступен — показаны только файлы');
+      ? t('{mods}, {known} найдено на Modrinth · проверено для Minecraft {version}', { mods: pluralize(mods.length, ['мод', 'мода', 'модов']), known, version: inst ? inst.version : '' })
+      : t('Modrinth недоступен — показаны только файлы'));
   }
 
   // Before the Modrinth check there are no updates yet: keep the requested filter until it is done
@@ -1916,12 +2066,12 @@ function renderModsList() {
 
   list.innerHTML = '';
   if (!mods.length) {
-    list.innerHTML = `<div class="empty"><h3>Модов пока нет</h3><p>Найдите их в каталоге Modrinth или перетащите .jar в окно.</p></div>`;
+    list.innerHTML = `<div class="empty"><h3>${t('Модов пока нет')}</h3><p>${t('Найдите их в каталоге Modrinth или перетащите .jar в окно.')}</p></div>`;
     return;
   }
   if (!visible.length) {
     const waiting = !modsUi.scanned && modsUi.filter !== 'all' && modsUi.filter !== 'disabled';
-    list.innerHTML = `<div class="empty empty-sm"><p>${waiting ? 'Сверка с Modrinth…' : 'Ничего не найдено'}</p></div>`;
+    list.innerHTML = `<div class="empty empty-sm"><p>${waiting ? t('Сверка с Modrinth…') : t('Ничего не найдено')}</p></div>`;
     return;
   }
 
@@ -1932,25 +2082,25 @@ function renderModsList() {
 
     let status = '';
     if (mod.update) {
-      status = `<button class="btn btn-update btn-sm" data-act="update" ${busy ? 'disabled' : ''} title="Версия ${esc(mod.update.versionNumber)} для Minecraft ${esc(inst.version)}">
-        ${busy ? 'Обновление…' : `${icon('download', 'ic-xs')}Обновить`}</button>`;
+      status = `<button class="btn btn-update btn-sm" data-act="update" ${busy ? 'disabled' : ''} title="${t('Версия {version} для Minecraft {mc}', { version: esc(mod.update.versionNumber), mc: esc(inst.version) })}">
+        ${busy ? t('Обновление…') : `${icon('download', 'ic-xs')}${t('Обновить')}`}</button>`;
     } else if (mod.compatible === false) {
-      status = `<span class="tag tag-warn" title="Эта версия мода сделана для ${esc((mod.gameVersions || []).slice(-3).join(', '))}">Не для ${esc(inst.version)}</span>`;
+      status = `<span class="tag tag-warn" title="${t('Эта версия мода сделана для {versions}', { versions: esc((mod.gameVersions || []).slice(-3).join(', ')) })}">${t('Не для {version}', { version: esc(inst.version) })}</span>`;
     } else if (modsUi.scanned && modsUi.online && !mod.projectId) {
-      status = '<span class="tag" title="Файла нет на Modrinth — обновления не проверяются">Не с Modrinth</span>';
+      status = `<span class="tag" title="${t('Файла нет на Modrinth — обновления не проверяются')}">${t('Не с Modrinth')}</span>`;
     }
 
     row.innerHTML = `
       <div class="mod-icon">${mod.iconUrl ? '<img alt="">' : icon('puzzle')}</div>
       <div class="trow-main">
-        <div class="trow-title">${esc(modDisplayName(mod))}${mod.enabled ? '' : '<span class="off-label">выключен</span>'}</div>
+        <div class="trow-title">${esc(modDisplayName(mod))}${mod.enabled ? '' : `<span class="off-label">${t('выключен')}</span>`}</div>
         <div class="trow-sub" title="${esc(mod.fileName)}">${mod.update
           ? `${esc(mod.versionNumber)} <span class="ver-arrow">→</span> <span class="ver-new">${esc(mod.update.versionNumber)}</span>`
           : `${mod.versionNumber ? esc(mod.versionNumber) + ' · ' : ''}${esc(mod.fileName)}`}</div>
       </div>
       <div class="trow-status">${status}</div>
-      <label class="switch" title="${mod.enabled ? 'Выключить' : 'Включить'}"><input type="checkbox" ${mod.enabled ? 'checked' : ''}><span></span></label>
-      <button class="icon-btn danger" data-act="delete" title="Удалить">${icon('trash')}</button>
+      <label class="switch" title="${mod.enabled ? t('Выключить') : t('Включить')}"><input type="checkbox" ${mod.enabled ? 'checked' : ''}><span></span></label>
+      <button class="icon-btn danger" data-act="delete" title="${t('Удалить')}">${icon('trash')}</button>
     `;
     const img = row.querySelector('img');
     if (img) {
@@ -1968,7 +2118,7 @@ function renderModsList() {
       }
     });
     row.querySelector('[data-act="delete"]').addEventListener('click', async () => {
-      const ok = await dialog({ title: 'Удалить мод?', text: modDisplayName(mod), okText: 'Удалить', danger: true });
+      const ok = await dialog({ title: t('Удалить мод?'), text: modDisplayName(mod), okText: t('Удалить'), danger: true });
       if (!ok) return;
       await api.deleteInstanceMod(inst.id, mod.fileName);
       await loadMods();
@@ -1991,7 +2141,7 @@ async function updateMods(mods) {
     try {
       await api.updateInstanceMod(inst.id, mod.fileName);
       done++;
-      if (mods.length > 1) $('btn-update-all').querySelector('span').textContent = `Обновление… ${done}/${mods.length}`;
+      if (mods.length > 1) $('btn-update-all').querySelector('span').textContent = `${t('Обновление…')} ${done}/${mods.length}`;
     } catch (e) {
       failed.push(`${modDisplayName(mod)}: ${errText(e)}`);
     }
@@ -1999,9 +2149,9 @@ async function updateMods(mods) {
   }
   modsUi.scanned = false;
   await loadMods();
-  if (done) toast(mods.length === 1 ? `${modDisplayName(mods[0])} обновлён` : `Обновлено модов: ${done}`);
+  if (done) toast(mods.length === 1 ? t('{name} обновлён', { name: modDisplayName(mods[0]) }) : t('Обновлено модов: {n}', { n: done }));
   if (failed.length) {
-    toast(`Не удалось обновить: ${failed.length}`, 'error', 6000);
+    toast(t('Не удалось обновить: {n}', { n: failed.length }), 'error', 6000);
     failed.forEach(f => appendLog('error', `[MODS]: ${f}`));
   }
 }
@@ -2030,7 +2180,7 @@ async function addModFiles(paths) {
   if (added) {
     await loadMods();
     refreshInstanceCounts();
-    toast(`Добавлено модов: ${added}`);
+    toast(t('Добавлено модов: {n}', { n: added }));
   }
 }
 
@@ -2051,7 +2201,7 @@ function setupMods() {
   });
 
   $('btn-add-mod').addEventListener('click', async () => {
-    const filePath = await api.browseFile({ title: 'Выберите мод (.jar)', filters: [{ name: 'Minecraft Mod', extensions: ['jar'] }] });
+    const filePath = await api.browseFile({ title: t('Выберите мод (.jar)'), filters: [{ name: 'Minecraft Mod', extensions: ['jar'] }] });
     if (filePath) addModFiles([filePath]);
   });
 
@@ -2084,12 +2234,12 @@ function setupMods() {
     dragDepth = 0;
     overlay.classList.add('hidden');
     if (!$('page-mods').classList.contains('active')) {
-      if (e.dataTransfer?.files?.length) toast('Моды ставятся в сборку: откройте её моды или выберите сборку с загрузчиком модов', 'error');
+      if (e.dataTransfer?.files?.length) toast(t('Моды ставятся в сборку: откройте её моды или выберите сборку с загрузчиком модов'), 'error');
       return;
     }
     const jars = [...(e.dataTransfer?.files || [])].filter(f => f.name.endsWith('.jar')).map(f => f.path);
     if (jars.length) addModFiles(jars);
-    else if (e.dataTransfer?.files?.length) toast('Можно добавлять только .jar файлы', 'error');
+    else if (e.dataTransfer?.files?.length) toast(t('Можно добавлять только .jar файлы'), 'error');
   });
 
   // Modrinth
@@ -2129,7 +2279,7 @@ async function searchModrinth() {
     renderModrinthResults(lastHits);
   } catch (e) {
     if (reqId !== modrinthRequest) return;
-    list.innerHTML = `<div class="empty"><h3>Modrinth недоступен</h3><p>${esc(errText(e))}</p></div>`;
+    list.innerHTML = `<div class="empty"><h3>${t('Modrinth недоступен')}</h3><p>${esc(errText(e))}</p></div>`;
   }
 }
 
@@ -2137,11 +2287,11 @@ let lastHits = null;
 
 // Modrinth content categories; loader tags (fabric, babric, ...) are left out on purpose
 const CATEGORY_LABELS = {
-  adventure: 'приключения', cursed: 'странное', decoration: 'декор', economy: 'экономика',
-  equipment: 'снаряжение', food: 'еда', 'game-mechanics': 'механики', library: 'библиотека',
-  magic: 'магия', management: 'управление', minigame: 'мини-игры', mobs: 'мобы',
-  optimization: 'оптимизация', social: 'общение', storage: 'хранение', technology: 'технологии',
-  transportation: 'транспорт', utility: 'утилиты', worldgen: 'генерация мира'
+  adventure: t('приключения'), cursed: t('странное'), decoration: t('декор'), economy: t('экономика'),
+  equipment: t('снаряжение'), food: t('еда'), 'game-mechanics': t('механики'), library: t('библиотека'),
+  magic: t('магия'), management: t('управление'), minigame: t('мини-игры'), mobs: t('мобы'),
+  optimization: t('оптимизация'), social: t('общение'), storage: t('хранение'), technology: t('технологии'),
+  transportation: t('транспорт'), utility: t('утилиты'), worldgen: t('генерация мира')
 };
 
 function installedByProject() {
@@ -2154,7 +2304,7 @@ function renderModrinthResults(hits) {
   const list = $('modrinth-results');
   list.innerHTML = '';
   if (!hits.length) {
-    list.innerHTML = `<div class="empty"><h3>Ничего не найдено</h3><p>Для этой версии Minecraft и загрузчика подходящих модов нет.</p></div>`;
+    list.innerHTML = `<div class="empty"><h3>${t('Ничего не найдено')}</h3><p>${t('Для этой версии Minecraft и загрузчика подходящих модов нет.')}</p></div>`;
     return;
   }
   hits.forEach(hit => {
@@ -2180,33 +2330,33 @@ function renderModrinthResults(hits) {
     const renderAction = () => {
       const l = installedByProject()[hit.project_id];
       if (l && l.update) {
-        slot.innerHTML = `<button class="btn btn-update btn-sm">${icon('download', 'ic-xs')}Обновить</button>`;
+        slot.innerHTML = `<button class="btn btn-update btn-sm">${icon('download', 'ic-xs')}${t('Обновить')}</button>`;
         slot.querySelector('button').addEventListener('click', async () => {
-          slot.innerHTML = '<span class="tag">Обновление…</span>';
+          slot.innerHTML = `<span class="tag">${t('Обновление…')}</span>`;
           await updateMods([l]);
           renderAction();
         });
       } else if (l) {
-        slot.innerHTML = `<span class="tag tag-ok">${icon('check', 'ic-xs')}Установлен</span>`;
+        slot.innerHTML = `<span class="tag tag-ok">${icon('check', 'ic-xs')}${t('Установлен')}</span>`;
       } else {
-        slot.innerHTML = `<button class="btn btn-secondary btn-sm">Установить</button>`;
+        slot.innerHTML = `<button class="btn btn-secondary btn-sm">${t('Установить')}</button>`;
         const btn = slot.querySelector('button');
         btn.addEventListener('click', async () => {
           const inst = modsInstance();
           if (!inst) return;
           btn.disabled = true;
-          btn.textContent = 'Загрузка…';
+          btn.textContent = t('Загрузка…');
           try {
             const res = await api.installModrinthMod(hit.project_id, inst.id);
-            const extra = res.added.length > 1 ? ` (+ зависимости: ${res.added.length - 1})` : '';
-            toast(`Установлен ${hit.title}${extra}`);
+            const extra = res.added.length > 1 ? ` (${t('+ зависимости: {n}', { n: res.added.length - 1 })})` : '';
+            toast(t('Установлен {name}', { name: hit.title }) + extra);
             modsUi.scanned = false;
             await loadMods();
             refreshInstanceCounts();
             renderAction();
           } catch (e) {
             btn.disabled = false;
-            btn.textContent = 'Установить';
+            btn.textContent = t('Установить');
             toast(errText(e), 'error', 5000);
           }
         });
@@ -2218,11 +2368,12 @@ function renderModrinthResults(hits) {
 }
 
 // ================= GAME SETTINGS TRANSFER =================
-const SYNC_MODES = [['always', 'Всегда'], ['ask', 'Спрашивать'], ['never', 'Никогда']];
+const SYNC_MODES = [['always', t('Всегда')], ['ask', t('Спрашивать')], ['never', t('Никогда')]];
 
 async function loadSyncCategories() {
   try {
-    state.syncCategories = await api.getSyncCategories();
+    // labels are the Russian texts of options-sync.js, translated here
+    state.syncCategories = (await api.getSyncCategories()).map(c => ({ ...c, label: t(c.label) }));
   } catch (e) {
     state.syncCategories = [];
   }
@@ -2257,16 +2408,13 @@ function renderSyncSettings() {
 }
 
 function profileName(id) {
-  if (id === 'global') return 'Общая папка .minecraft';
+  if (id === 'global') return t('Общая папка .minecraft');
   const inst = findInstance(id);
   return inst ? inst.name : id;
 }
 
 function pluralChanges(n) {
-  const mod10 = n % 10, mod100 = n % 100;
-  const word = mod10 === 1 && mod100 !== 11 ? 'изменение'
-    : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? 'изменения' : 'изменений';
-  return `${n} ${word}`;
+  return pluralize(n, ['изменение', 'изменения', 'изменений']);
 }
 
 /**
@@ -2283,13 +2431,13 @@ function syncDialog({ targetId, sourceId, diff, categories, manual }) {
     let currentDiff = diff;
 
     $('sync-source-wrap').classList.toggle('hidden', !manual);
-    $('sync-skip').textContent = manual ? 'Отмена' : 'Не переносить';
+    $('sync-skip').textContent = manual ? t('Отмена') : t('Не переносить');
     status.textContent = '';
 
     const renderText = () => {
       $('sync-text').textContent = manual
-        ? `Настройки будут скопированы в «${profileName(targetId)}».`
-        : `В «${profileName(currentSource)}» настройки игры менялись позже, чем в «${profileName(targetId)}». Перенести их перед запуском?`;
+        ? t('Настройки будут скопированы в «{name}».', { name: profileName(targetId) })
+        : t('В «{source}» настройки игры менялись позже, чем в «{target}». Перенести их перед запуском?', { source: profileName(currentSource), target: profileName(targetId) });
     };
 
     const renderChecks = () => {
@@ -2301,7 +2449,7 @@ function syncDialog({ targetId, sourceId, diff, categories, manual }) {
         row.innerHTML = `
           <input type="checkbox" value="${cat.id}" ${n ? 'checked' : 'disabled'}>
           <span>${esc(cat.label)}</span>
-          <span class="muted small">${n ? pluralChanges(n) : 'совпадает'}</span>
+          <span class="muted small">${n ? pluralChanges(n) : t('совпадает')}</span>
         `;
         checks.appendChild(row);
       });
@@ -2339,7 +2487,7 @@ function syncDialog({ targetId, sourceId, diff, categories, manual }) {
       const chosen = [...checks.querySelectorAll('input:checked')].map(i => i.value);
       if (!chosen.length) {
         status.className = 'form-status error';
-        status.textContent = 'Нечего переносить';
+        status.textContent = t('Нечего переносить');
         return;
       }
       finish({ sourceId: currentSource, categories: chosen });
@@ -2378,10 +2526,10 @@ async function maybeSyncOptions(targetId) {
     try {
       const count = await api.applyOptionsSync(targetId, check.source.id, chosen);
       const labels = state.syncCategories.filter(c => chosen.includes(c.id)).map(c => c.label.toLowerCase());
-      appendLog('info', `[LAUNCHER]: Перенесено из «${check.source.name}»: ${labels.join(', ')} (${count} параметров)`);
-      toast(`Настройки перенесены из «${check.source.name}»`);
+      appendLog('info', `[LAUNCHER]: ${t('Перенесено из «{name}»: {what} ({n} параметров)', { name: check.source.name, what: labels.join(', '), n: count })}`);
+      toast(t('Настройки перенесены из «{name}»', { name: check.source.name }));
     } catch (e) {
-      toast(`Не удалось перенести настройки: ${errText(e)}`, 'error');
+      toast(t('Не удалось перенести настройки: {error}', { error: errText(e) }), 'error');
     }
   }
 
@@ -2392,7 +2540,7 @@ async function maybeSyncOptions(targetId) {
 
 async function openManualSync(targetId) {
   if (state.isGameRunning || state.isLaunching) {
-    toast('Закройте игру перед переносом настроек', 'error');
+    toast(t('Закройте игру перед переносом настроек'), 'error');
     return;
   }
   let check = { source: null, diff: {} };
@@ -2411,7 +2559,7 @@ async function openManualSync(targetId) {
   if (!answer) return;
   try {
     const count = await api.applyOptionsSync(targetId, answer.sourceId, answer.categories);
-    toast(count ? `Перенесено параметров: ${count}` : 'Настройки уже совпадают');
+    toast(count ? t('Перенесено параметров: {n}', { n: count }) : t('Настройки уже совпадают'));
   } catch (e) {
     toast(errText(e), 'error');
   }
@@ -2422,7 +2570,7 @@ function setupHome() {
   $('btn-launch').addEventListener('click', async (e) => {
     // while the game runs the same button closes it
     if (!e.currentTarget.classList.contains('running')) return handleLaunch();
-    const ok = await dialog({ title: 'Закрыть игру?', text: 'Процесс Minecraft будет завершён принудительно. Несохранённый прогресс может потеряться.', okText: 'Закрыть', danger: true });
+    const ok = await dialog({ title: t('Закрыть игру?'), text: t('Процесс Minecraft будет завершён принудительно. Несохранённый прогресс может потеряться.'), okText: t('Закрыть'), danger: true });
     if (ok) api.killGame();
   });
 }
@@ -2433,7 +2581,7 @@ function setLaunchUi(mode, text) {
   btn.classList.toggle('running', mode === 'running');
   btn.disabled = mode === 'launching';
   $('btn-launch-icon').setAttribute('href', mode === 'running' ? '#i-stop' : '#i-play');
-  $('btn-launch-text').textContent = text || (mode === 'idle' ? 'Играть' : mode === 'running' ? 'Закрыть игру' : 'Запуск…');
+  $('btn-launch-text').textContent = text || (mode === 'idle' ? t('Играть') : mode === 'running' ? t('Закрыть игру') : t('Запуск…'));
   $('progress').classList.toggle('active', mode === 'launching');
 }
 
@@ -2455,14 +2603,14 @@ async function handleLaunch() {
 
   state.isLaunching = true;
   setLaunchUi('launching');
-  setProgress(null, 'Проверка файлов…');
+  setProgress(null, t('Проверка файлов…'));
 
   const inst = findInstance(state.selected);
-  setProgress(null, 'Проверка настроек…');
+  setProgress(null, t('Проверка настроек…'));
   await maybeSyncOptions(inst ? inst.id : 'global');
-  setProgress(null, 'Проверка файлов…');
+  setProgress(null, t('Проверка файлов…'));
 
-  appendLog('info', `[LAUNCHER]: Запуск ${inst ? `сборки «${inst.name}»` : state.selected}`);
+  appendLog('info', `[LAUNCHER]: ${inst ? t('Запуск сборки «{name}»', { name: inst.name }) : t('Запуск {version}', { version: state.selected })}`);
 
   const result = await api.launchGame(inst ? { instanceId: inst.id } : { version: state.selected })
     .catch(e => ({ success: false, error: errText(e) }));
@@ -2476,13 +2624,13 @@ async function handleLaunch() {
 }
 
 const PROGRESS_LABELS = {
-  assets: 'Загрузка ресурсов',
-  'assets-copy': 'Копирование ресурсов',
-  classes: 'Загрузка библиотек',
-  'classes-custom': 'Загрузка библиотек загрузчика',
-  'classes-maven-custom': 'Загрузка библиотек загрузчика',
-  natives: 'Распаковка нативных библиотек',
-  'version-jar': 'Загрузка Minecraft'
+  assets: t('Загрузка ресурсов'),
+  'assets-copy': t('Копирование ресурсов'),
+  classes: t('Загрузка библиотек'),
+  'classes-custom': t('Загрузка библиотек загрузчика'),
+  'classes-maven-custom': t('Загрузка библиотек загрузчика'),
+  natives: t('Распаковка нативных библиотек'),
+  'version-jar': t('Загрузка Minecraft')
 };
 
 // after a reload the window starts fresh, but the game may still be running
@@ -2499,7 +2647,7 @@ async function restoreGameState() {
     state.isLaunching = true;
     state.restoredLaunch = true;
     setLaunchUi('launching');
-    setProgress(null, 'Запуск…');
+    setProgress(null, t('Запуск…'));
   }
 }
 
@@ -2515,7 +2663,7 @@ function setupSubscriptions() {
 
   api.onLaunchProgress((data) => {
     if (!state.isLaunching) return;
-    const label = PROGRESS_LABELS[data.type] || (data.name ? `Загрузка ${data.name}` : 'Загрузка…');
+    const label = PROGRESS_LABELS[data.type] || (data.name ? t('Загрузка {name}', { name: data.name }) : t('Загрузка…'));
     if (data.total > 1) setProgress(data.percent, label);
     else setProgress(null, label);
   });
@@ -2536,7 +2684,7 @@ function setupSubscriptions() {
     state.runningInstanceId = null;
     setLaunchUi('idle');
     if (code && code !== 0) {
-      toast(`Игра завершилась с ошибкой (код ${code}). Подробности в консоли.`, 'error', 6000);
+      toast(t('Игра завершилась с ошибкой (код {code}). Подробности в консоли.', { code }), 'error', 6000);
       $('log-indicator').classList.add('active', 'error');
     }
     refreshInstanceCounts().then(renderAll);
@@ -2560,7 +2708,7 @@ function shotsSignature(list) {
 /** Reads the folders again; the grid is redrawn only when something actually changed. */
 async function loadScreenshots(force = false) {
   if (state.screenshots && !force) return renderScreenshots();
-  if (!state.screenshots) $('shots-list').innerHTML = '<div class="empty"><p>Ищу скриншоты…</p></div>';
+  if (!state.screenshots) $('shots-list').innerHTML = `<div class="empty"><p>${t('Ищу скриншоты…')}</p></div>`;
   const before = state.screenshots;
   const viewed = currentShot();
   let list;
@@ -2568,7 +2716,7 @@ async function loadScreenshots(force = false) {
     list = await api.listScreenshots();
   } catch (e) {
     list = [];
-    toast(`Не удалось прочитать скриншоты: ${errText(e)}`, 'error');
+    toast(t('Не удалось прочитать скриншоты: {error}', { error: errText(e) }), 'error');
   }
   if (before && shotsSignature(before) === shotsSignature(list)) return;
   state.screenshots = list;
@@ -2589,7 +2737,7 @@ function renderShotsFilter() {
     counts.set(key, entry);
   }
   if (state.shotsFilter !== 'all' && !counts.has(state.shotsFilter)) state.shotsFilter = 'all';
-  const options = [`<option value="all">Все сборки</option>`]
+  const options = [`<option value="all">${t('Все сборки')}</option>`]
     .concat([...counts].map(([key, e]) => `<option value="${esc(key)}">${esc(e.name)} (${e.count})</option>`));
   $('shots-filter').innerHTML = options.join('');
   $('shots-filter').value = state.shotsFilter;
@@ -2600,14 +2748,14 @@ function shotDayLabel(ts) {
   const date = new Date(ts);
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  if (ts >= start) return 'Сегодня';
-  if (ts >= start - 86400000) return 'Вчера';
+  if (ts >= start) return t('Сегодня');
+  if (ts >= start - 86400000) return t('Вчера');
   const opts = date.getFullYear() === today.getFullYear() ? { day: 'numeric', month: 'long' } : { day: 'numeric', month: 'long', year: 'numeric' };
-  return date.toLocaleDateString('ru-RU', opts).replace(/\s?г\.$/, '');
+  return date.toLocaleDateString(i18n.locale(), opts).replace(/\s?г\.$/, '');
 }
 
 function shotTime(ts) {
-  return new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return new Date(ts).toLocaleTimeString(i18n.locale(), { hour: '2-digit', minute: '2-digit' });
 }
 
 function renderScreenshots() {
@@ -2618,8 +2766,8 @@ function renderScreenshots() {
   if (!shots.length) {
     list.innerHTML = `
       <div class="empty">
-        <h3>Скриншотов пока нет</h3>
-        <p>Нажмите F2 в игре — снимок появится здесь. Сюда собираются скриншоты из всех сборок.</p>
+        <h3>${t('Скриншотов пока нет')}</h3>
+        <p>${t('Нажмите F2 в игре — снимок появится здесь. Сюда собираются скриншоты из всех сборок.')}</p>
       </div>`;
     return;
   }
@@ -2649,7 +2797,7 @@ function openViewer(index) {
   const s = shots[state.viewerIndex];
   $('viewer-img').src = s.url;
   $('viewer-name').textContent = s.name;
-  $('viewer-sub').textContent = `${s.instanceName} · ${shotDayLabel(s.time)}, ${shotTime(s.time)} · ${formatSize(s.size)} · ${state.viewerIndex + 1} из ${shots.length}`;
+  $('viewer-sub').textContent = `${s.instanceName} · ${shotDayLabel(s.time)}, ${shotTime(s.time)} · ${formatSize(s.size)} · ${t('{n} из {total}', { n: state.viewerIndex + 1, total: shots.length })}`;
   $('viewer-prev').disabled = state.viewerIndex === 0;
   $('viewer-next').disabled = state.viewerIndex === shots.length - 1;
   $('viewer').classList.remove('hidden');
@@ -2671,10 +2819,10 @@ async function deleteCurrentShot() {
   try {
     await api.deleteScreenshot(shot.path);
   } catch (e) {
-    return toast(`Не удалось удалить: ${errText(e)}`, 'error');
+    return toast(t('Не удалось удалить: {error}', { error: errText(e) }), 'error');
   }
   state.screenshots = state.screenshots.filter(s => s.path !== shot.path);
-  toast('Скриншот перемещён в корзину');
+  toast(t('Скриншот перемещён в корзину'));
   renderScreenshots();
   openViewer(state.viewerIndex);
 }
@@ -2701,9 +2849,9 @@ function setupScreenshots() {
   $('viewer-copy').addEventListener('click', async () => {
     try {
       await api.copyScreenshot(currentShot().path);
-      toast('Картинка скопирована');
+      toast(t('Картинка скопирована'));
     } catch (e) {
-      toast(`Не удалось скопировать: ${errText(e)}`, 'error');
+      toast(t('Не удалось скопировать: {error}', { error: errText(e) }), 'error');
     }
   });
   $('viewer-delete').addEventListener('click', deleteCurrentShot);
@@ -2730,7 +2878,7 @@ function setupLogs() {
   $('btn-clear-logs').addEventListener('click', () => api.clearLogs());
   $('btn-copy-logs').addEventListener('click', () => {
     navigator.clipboard.writeText(logView.text());
-    toast('Логи скопированы');
+    toast(t('Логи скопированы'));
   });
   $('btn-detach-console').addEventListener('click', () => api.openConsoleWindow());
 

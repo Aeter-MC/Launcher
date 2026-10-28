@@ -4,6 +4,7 @@
  */
 const fs = require('fs');
 const { xuidFromToken } = require('./microsoft-auth');
+const { t } = require('./i18n/i18n');
 
 // MCLC passes the access token as --xuid when meta.xuid is empty, so accounts without an Xbox id get this instead
 const NO_XUID = '0';
@@ -35,7 +36,7 @@ class LauncherCore {
    */
   async launch(options, callbacks = {}) {
     if (this.isRunning || this.isLaunching) {
-      throw new Error('Игра уже запущена!');
+      throw new Error(t('Игра уже запущена!'));
     }
 
     const {
@@ -69,7 +70,7 @@ class LauncherCore {
         const meta = account.mclcAuth.meta || {};
         const xuid = meta.xuid || xuidFromToken(account.mclcAuth.access_token) || NO_XUID;
         authObj = { ...account.mclcAuth, meta: { ...meta, xuid } };
-        log('info', `[AUTH]: Авторизация через Microsoft (${account.username})`);
+        log('info', `[AUTH]: ${t('Авторизация через Microsoft ({name})', { name: account.username })}`);
       } else if (account && account.type === 'elyby' && account.accessToken) {
         authObj = {
           access_token: account.accessToken,
@@ -81,12 +82,12 @@ class LauncherCore {
         };
         if (elyByManager) {
           extraJvmArgs.push(await elyByManager.getJvmArgs());
-          log('info', `[AUTH]: Ely.by authlib-injector подключен (${account.username})`);
+          log('info', `[AUTH]: ${t('Ely.by authlib-injector подключен ({name})', { name: account.username })}`);
         }
       } else {
         const uName = (account && account.username) || 'Player';
         authObj = await launcherLib().Authenticator.getAuth(uName);
-        log('info', `[AUTH]: Оффлайн режим (${uName})`);
+        log('info', `[AUTH]: ${t('Оффлайн режим ({name})', { name: uName })}`);
       }
 
       const customArgs = String(customJvmArgs || '').split(/\s+/).filter(Boolean);
@@ -117,7 +118,7 @@ class LauncherCore {
         mclOptions.javaPath = javaPath;
         log('info', `[JAVA]: ${javaPath}`);
       } else {
-        log('warn', '[JAVA]: Подходящая Java не найдена, используется "java" из PATH');
+        log('warn', t('[JAVA]: Подходящая Java не найдена, используется "java" из PATH'));
       }
 
       this.client = new (launcherLib().Client)();
@@ -164,24 +165,24 @@ class LauncherCore {
         const durationSeconds = Math.round((Date.now() - this.launchStartTime) / 1000);
         this.isRunning = false;
         this.gameProcess = null;
-        log('info', `Процесс игры завершен (Код: ${code}, Время игры: ${Math.floor(durationSeconds / 60)}м ${durationSeconds % 60}с)`);
+        log('info', t('Процесс игры завершен (Код: {code}, Время игры: {m}м {s}с)', { code, m: Math.floor(durationSeconds / 60), s: durationSeconds % 60 }));
         onClose && onClose(code, durationSeconds);
       });
 
       // MCLC does not throw on failure: it emits a debug message and resolves with null.
       const processHandle = await this.client.launch(mclOptions);
       if (!processHandle) {
-        const reason = lastDebug.replace(/^\[MCLC\]:\s*/, '') || 'неизвестная ошибка';
+        const reason = lastDebug.replace(/^\[MCLC\]:\s*/, '') || t('неизвестная ошибка');
         throw new Error(reason);
       }
 
       this.gameProcess = processHandle;
       this.isRunning = true;
-      log('info', 'Minecraft успешно запущен!');
+      log('info', t('Minecraft успешно запущен!'));
       onLaunched && onLaunched();
       return processHandle;
     } catch (err) {
-      log('error', `Ошибка запуска: ${err.message}`);
+      log('error', t('Ошибка запуска: {error}', { error: err.message }));
       throw err;
     } finally {
       this.isLaunching = false;

@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const crypto = require('crypto');
+const { t } = require('./i18n/i18n');
 
 const AUTHLIB_INJECTOR_URL = 'https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.5/authlib-injector-1.2.5.jar';
 const ELY_AUTH_URL = 'https://authserver.ely.by/auth/authenticate';
@@ -50,7 +51,7 @@ class ElyByManager {
       return jarPath;
     } catch (e) {
       console.error('[ElyByManager] Failed to download authlib-injector:', e.message);
-      throw new Error(`Не удалось загрузить authlib-injector.jar: ${e.message}`);
+      throw new Error(t('Не удалось загрузить authlib-injector.jar: {error}', { error: e.message }));
     }
   }
 
@@ -79,7 +80,7 @@ class ElyByManager {
       const profile = data.selectedProfile || (data.availableProfiles && data.availableProfiles[0]);
 
       if (!profile) {
-        throw new Error('Профиль Ely.by не найден для данного аккаунта.');
+        throw new Error(t('Профиль Ely.by не найден для данного аккаунта.'));
       }
 
       // Download injector in advance
@@ -100,7 +101,7 @@ class ElyByManager {
       if (err.response && err.response.data && err.response.data.errorMessage) {
         throw new Error(err.response.data.errorMessage);
       }
-      throw new Error(`Ошибка входа Ely.by: ${err.message}`);
+      throw new Error(t('Ошибка входа Ely.by: {error}', { error: err.message }));
     }
   }
 
@@ -127,7 +128,7 @@ class ElyByManager {
         clientToken: res.data.clientToken || account.clientToken
       };
     } catch (e) {
-      throw new Error('Сессия Ely.by истекла. Войдите в аккаунт заново.');
+      throw new Error(t('Сессия Ely.by истекла. Войдите в аккаунт заново.'));
     }
   }
 

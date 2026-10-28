@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { t } = require('./i18n/i18n');
 
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 
@@ -21,7 +22,7 @@ function screenshotSources(root, instances) {
     seen.add(resolved.toLowerCase());
     sources.push({ dir: resolved, instanceId, instanceName });
   };
-  add(path.join(root, 'screenshots'), null, 'Общая папка .minecraft');
+  add(path.join(root, 'screenshots'), null, t('Общая папка .minecraft'));
   for (const inst of instances) add(path.join(inst.minecraftDir, 'screenshots'), inst.id, inst.name);
   return sources;
 }

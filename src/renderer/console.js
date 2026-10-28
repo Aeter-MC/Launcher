@@ -2,6 +2,8 @@
  * console.js
  * Detached console window: shows the launcher/game log history and new lines live.
  */
+i18n.translateDom(document.documentElement);
+
 document.addEventListener('DOMContentLoaded', async () => {
   const view = createLogView(document.getElementById('logs'));
   api.onThemeChanged((id) => { document.documentElement.dataset.theme = id; });
@@ -21,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   copyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(view.text());
     const label = copyBtn.lastChild;
-    label.textContent = 'Скопировано';
-    setTimeout(() => { label.textContent = 'Копировать'; }, 1200);
+    label.textContent = i18n.t('Скопировано');
+    setTimeout(() => { label.textContent = i18n.t('Копировать'); }, 1200);
   });
 });

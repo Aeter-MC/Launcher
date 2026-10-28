@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const { spawn } = require('child_process');
 const axios = require('axios');
 const AdmZip = require('adm-zip');
+const { t } = require('./i18n/i18n');
 
 const LOADER_NAMES = { fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'NeoForge' };
 
@@ -110,7 +111,7 @@ async function downloadOnce(url, dest, sha1) {
   });
   if (sha1 && (await sha1File(part)) !== sha1) {
     fs.rmSync(part, { force: true });
-    throw new Error(`Файл скачался с ошибкой: ${path.basename(dest)}`);
+    throw new Error(t('Файл скачался с ошибкой: {file}', { file: path.basename(dest) }));
   }
   fs.renameSync(part, dest);
 }
@@ -159,7 +160,7 @@ function runJava(java, args, cwd) {
     child.on('error', reject);
     child.on('close', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`код ${code}${tail.length ? `: ${tail.slice(-2).join(' ')}` : ''}`));
+      else reject(new Error(t('код {code}', { code }) + (tail.length ? `: ${tail.slice(-2).join(' ')}` : '')));
     });
   });
 }
@@ -233,7 +234,7 @@ class LoaderManager {
         return { versions, recommended: versions.find(v => !v.includes('-')) || null };
       }
       default:
-        throw new Error(`Неизвестный загрузчик: ${loader}`);
+        throw new Error(t('Неизвестный загрузчик: {loader}', { loader }));
     }
   }
 
@@ -272,15 +273,15 @@ class LoaderManager {
 
   /**
    * Installs a loader version (the recommended one when none is given).
-   * options.onStatus(text) reports progress, options.getJava() gives Java for the Forge/NeoForge processors.
+   * options.onStatus(text, { progress }) reports progress (progress: a counter repeated many times), options.getJava() gives Java for the Forge/NeoForge processors.
    */
   async install(loader, gameVersion, loaderVersion, options = {}) {
     const name = LoaderManager.label(loader);
-    if (!LOADER_NAMES[loader]) throw new Error(`Неизвестный загрузчик: ${loader}`);
+    if (!LOADER_NAMES[loader]) throw new Error(t('Неизвестный загрузчик: {loader}', { loader }));
     if (!loaderVersion) {
       const { versions, recommended } = await this.versionsOf(loader, gameVersion);
       loaderVersion = recommended || versions[0];
-      if (!loaderVersion) throw new Error(`${name} нет для Minecraft ${gameVersion}`);
+      if (!loaderVersion) throw new Error(t('{loader} нет для Minecraft {version}', { loader: name, version: gameVersion }));
     }
 
     switch (loader) {
@@ -328,7 +329,7 @@ class LoaderManager {
     if (!meta || !meta.downloads || !meta.downloads.client) {
       const manifest = await this.versionManager.getMojangManifest();
       const entry = manifest.versions.find(v => v.id === mcVersion);
-      if (!entry) throw new Error(`Minecraft ${mcVersion} нет в списке версий`);
+      if (!entry) throw new Error(t('Minecraft {version} нет в списке версий', { version: mcVersion }));
       meta = (await axios.get(entry.url, { timeout: 15000 })).data;
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, `${mcVersion}.json`), JSON.stringify(meta, null, 2), 'utf-8');
@@ -359,7 +360,7 @@ class LoaderManager {
           try {
             await download(url, file, sha1);
           } catch (e) {
-            throw new Error(`Не удалось скачать ${path.basename(rel)}: ${e.message}`);
+            throw new Error(t('Не удалось скачать {file}: {error}', { file: path.basename(rel), error: e.message }));
           }
         }
       }
@@ -376,12 +377,12 @@ class LoaderManager {
 
     const work = fs.mkdtempSync(path.join(os.tmpdir(), 'aetermc-loader-'));
     try {
-      onStatus(`Скачивание установщика ${name} ${loaderVersion}…`);
+      onStatus(t('Скачивание установщика {loader} {version}…', { loader: name, version: loaderVersion }));
       const installer = path.join(work, 'installer.jar');
       try {
         await download(url, installer);
       } catch (e) {
-        if (e.response && e.response.status === 404) throw new Error(`${name} ${loaderVersion} для Minecraft ${gameVersion} не найден`);
+        if (e.response && e.response.status === 404) throw new Error(t('{loader} {version} для Minecraft {mc} не найден', { loader: name, version: loaderVersion, mc: gameVersion }));
         throw e;
       }
 
@@ -390,7 +391,7 @@ class LoaderManager {
         try {
           return JSON.parse(zip.readAsText(entry));
         } catch (e) {
-          throw new Error(`Установщик ${name} повреждён (${entry})`);
+          throw new Error(t('Установщик {loader} повреждён ({file})', { loader: name, file: entry }));
         }
       };
       const profile = readJson('install_profile.json');
@@ -405,13 +406,13 @@ class LoaderManager {
       const mcVersion = profile.minecraft || gameVersion;
       const libDir = path.join(this.root, 'libraries');
 
-      onStatus(`Скачивание Minecraft ${mcVersion}…`);
+      onStatus(t('Скачивание Minecraft {version}…', { version: mcVersion }));
       const clientJar = await this.ensureClientJar(mcVersion);
 
       const libs = [...(profile.libraries || []), ...(versionJson.libraries || [])];
       // the loader's own jar, only ever taken from the installer
       if (profile.path) libs.push({ name: profile.path, downloads: { artifact: { path: mavenPath(profile.path), url: '' } } });
-      await this.fetchLibraries(libs, zip, (done, total) => onStatus(`Библиотеки ${name}: ${done} из ${total}`));
+      await this.fetchLibraries(libs, zip, (done, total) => onStatus(t('Библиотеки {loader}: {n} из {total}', { loader: name, n: done, total }), { progress: true }));
 
       // Values the processor arguments refer to as {KEY}
       const data = {
@@ -432,7 +433,7 @@ class LoaderManager {
           // a file inside the installer, e.g. /data/client.lzma
           const entryName = v.replace(/^\//, '');
           const entry = zip.getEntry(entryName);
-          if (!entry) throw new Error(`Установщик ${name} повреждён (${entryName})`);
+          if (!entry) throw new Error(t('Установщик {loader} повреждён ({file})', { loader: name, file: entryName }));
           const out = path.join(work, entryName);
           fs.mkdirSync(path.dirname(out), { recursive: true });
           fs.writeFileSync(out, entry.getData());
@@ -443,7 +444,7 @@ class LoaderManager {
         if (/^\[.+\]$/.test(arg)) return path.join(libDir, mavenPath(arg.slice(1, -1)));
         if (/^'.*'$/.test(arg)) return arg.slice(1, -1);
         return arg.replace(/\{(\w+)\}/g, (match, key) => {
-          if (!(key in data)) throw new Error(`Установщик ${name}: неизвестный параметр ${key}`);
+          if (!(key in data)) throw new Error(t('Установщик {loader}: неизвестный параметр {key}', { loader: name, key }));
           return data[key];
         });
       };
@@ -451,22 +452,22 @@ class LoaderManager {
       const processors = (profile.processors || []).filter(p => !p.sides || p.sides.includes('client'));
       const java = processors.length ? await getJava() : null;
       for (const [i, proc] of processors.entries()) {
-        onStatus(`Установка ${name}: шаг ${i + 1} из ${processors.length}…`);
+        onStatus(t('Установка {loader}: шаг {n} из {total}…', { loader: name, n: i + 1, total: processors.length }));
         const outputs = Object.entries(proc.outputs || {}).map(([file, sha1]) => [fill(file), fill(sha1)]);
         const matches = async () => (await Promise.all(outputs.map(([file, sha1]) => fileMatches(file, sha1)))).every(Boolean);
         if (outputs.length && (await matches())) continue;
 
         const jar = path.join(libDir, mavenPath(proc.jar));
         const mainClass = fs.existsSync(jar) ? jarMainClass(jar) : null;
-        if (!mainClass) throw new Error(`Установщик ${name}: не найден ${path.basename(jar)}`);
+        if (!mainClass) throw new Error(t('Установщик {loader}: не найден {file}', { loader: name, file: path.basename(jar) }));
         const classpath = [jar, ...(proc.classpath || []).map(c => path.join(libDir, mavenPath(c)))].join(path.delimiter);
         try {
           await runJava(java, ['-cp', classpath, mainClass, ...proc.args.map(fill)], work);
         } catch (e) {
-          throw new Error(`Установка ${name} не удалась на шаге ${i + 1}: ${e.message}`);
+          throw new Error(t('Установка {loader} не удалась на шаге {n}: {error}', { loader: name, n: i + 1, error: e.message }));
         }
         if (outputs.length && !(await matches())) {
-          throw new Error(`Установка ${name} не удалась на шаге ${i + 1}: файлы не совпали`);
+          throw new Error(t('Установка {loader} не удалась на шаге {n}: файлы не совпали', { loader: name, n: i + 1 }));
         }
       }
 
@@ -479,17 +480,17 @@ class LoaderManager {
 
   async installLegacyForge(zip, profile, loaderVersion, onStatus) {
     const { install, versionInfo } = profile;
-    onStatus(`Скачивание Minecraft ${install.minecraft}…`);
+    onStatus(t('Скачивание Minecraft {version}…', { version: install.minecraft }));
     const clientJar = await this.ensureClientJar(install.minecraft);
 
     const entry = zip.getEntry(install.filePath);
-    if (!entry) throw new Error(`Установщик Forge повреждён (${install.filePath})`);
+    if (!entry) throw new Error(t('Установщик {loader} повреждён ({file})', { loader: 'Forge', file: install.filePath }));
     const forgeJar = path.join(this.root, 'libraries', mavenPath(install.path));
     fs.mkdirSync(path.dirname(forgeJar), { recursive: true });
     fs.writeFileSync(forgeJar, entry.getData());
 
     const libs = versionInfo.libraries.filter(lib => lib.name !== install.path);
-    await this.fetchLibraries(libs, zip, (done, total) => onStatus(`Библиотеки Forge: ${done} из ${total}`));
+    await this.fetchLibraries(libs, zip, (done, total) => onStatus(t('Библиотеки {loader}: {n} из {total}', { loader: 'Forge', n: done, total }), { progress: true }));
 
     this.finishProfile(versionInfo.id, versionInfo, clientJar);
     return { id: versionInfo.id, loaderVersion };
