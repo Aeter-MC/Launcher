@@ -264,6 +264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupIconPicker();
   setupMods();
   setupPrismImport();
+  setupMrpack();
   setupSettings();
   setupLogs();
   setupScreenshots();
@@ -541,7 +542,7 @@ function setupModals() {
   });
   document.querySelectorAll('.modal').forEach(m => {
     m.addEventListener('mousedown', (e) => {
-      if (e.target === m && !['modal-dialog', 'modal-sync', 'modal-ms', 'modal-prism'].includes(m.id)) m.classList.add('hidden');
+      if (e.target === m && !['modal-dialog', 'modal-sync', 'modal-ms', 'modal-prism', 'modal-mrpack-import', 'modal-mrpack-export'].includes(m.id)) m.classList.add('hidden');
     });
   });
   document.addEventListener('keydown', (e) => {
@@ -556,6 +557,8 @@ function setupModals() {
     else if (open.id === 'modal-sync') $('sync-close').click();
     else if (open.id === 'modal-ms') closeMicrosoftLogin();
     else if (open.id === 'modal-prism') $('prism-cancel').click();
+    else if (open.id === 'modal-mrpack-import') $('mrpack-import-cancel').click();
+    else if (open.id === 'modal-mrpack-export') $('mrpack-export-cancel').click();
     else open.classList.add('hidden');
   });
 }
@@ -1006,6 +1009,208 @@ function setupPrismImport() {
   };
   $('prism-cancel').addEventListener('click', close);
   $('prism-close').addEventListener('click', close);
+}
+
+// ---------- Modrinth modpacks (.mrpack) ----------
+const mrpackUi = { file: null, busy: false, exportId: null, exported: null };
+
+// Known top-level folders and files of a build, as shown in the export list
+const PACK_ENTRY_LABELS = {
+  mods: t('моды'), config: t('настройки модов'), defaultconfigs: t('настройки модов по умолчанию'),
+  resourcepacks: t('ресурспаки'), shaderpacks: t('шейдеры'), saves: t('миры'), screenshots: t('скриншоты'),
+  kubejs: t('скрипты KubeJS'), 'options.txt': t('настройки игры и управление'), 'servers.dat': t('список серверов')
+};
+
+function setPackProgress(prefix, p) {
+  const pct = p.total ? Math.min(100, Math.max(0, Math.round((p.done / p.total) * 100))) : null;
+  $(`${prefix}-progress-text`).textContent = p.text || '';
+  $(`${prefix}-progress-percent`).textContent = pct === null ? '' : `${pct}%`;
+  const fill = $(`${prefix}-progress-fill`);
+  fill.classList.toggle('indeterminate', pct === null);
+  fill.style.width = pct === null ? '' : `${pct}%`;
+}
+
+function setPackBusy(busy) {
+  mrpackUi.busy = busy;
+  ['mrpack-import-start', 'input-mrpack-name', 'mrpack-export-start', 'input-mrpack-export-name', 'input-mrpack-export-version']
+    .forEach(id => { $(id).disabled = busy; });
+  document.querySelectorAll('#mrpack-export-list input').forEach(i => { i.disabled = busy; });
+}
+
+async function pickMrpack() {
+  const file = await api.browseFile({ title: t('Выберите модпак'), filters: [{ name: t('Модпак Modrinth'), extensions: ['mrpack'] }] });
+  if (file) openMrpackImport(file);
+}
+
+async function openMrpackImport(file) {
+  if (mrpackUi.busy) {
+    toast(t('Дождитесь окончания импорта'));
+    return;
+  }
+  let info;
+  try {
+    info = await api.inspectMrpack(file);
+  } catch (e) {
+    toast(errText(e), 'error', 6000);
+    return;
+  }
+  mrpackUi.file = file;
+  $('mrpack-import-title').textContent = info.versionId ? `${info.name} ${info.versionId}` : info.name;
+  $('mrpack-import-sub').textContent = info.loader === 'vanilla'
+    ? `Minecraft ${info.minecraft}`
+    : `${LOADER_LABELS[info.loader] || info.loader} ${info.loaderVersion} · Minecraft ${info.minecraft}`;
+  $('mrpack-import-desc').textContent = info.summary;
+  $('mrpack-import-desc').classList.toggle('hidden', !info.summary);
+  $('input-mrpack-name').value = info.name.slice(0, 48);
+  const parts = [];
+  if (info.downloadCount) parts.push(t('скачается с Modrinth: {files}, {size}', { files: pluralize(info.downloadCount, ['файл', 'файла', 'файлов']), size: formatSize(info.downloadBytes) }));
+  if (info.overrideCount) parts.push(t('в самом модпаке: {files}', { files: pluralize(info.overrideCount, ['файл', 'файла', 'файлов']) }));
+  $('mrpack-import-files').textContent = parts.length ? parts.join(' · ').replace(/^./, c => c.toUpperCase()) : '';
+  $('mrpack-import-progress').classList.add('hidden');
+  $('mrpack-import-status').textContent = '';
+  openModal('modal-mrpack-import');
+  $('input-mrpack-name').focus();
+}
+
+async function startMrpackImport() {
+  if (mrpackUi.busy || !mrpackUi.file) return;
+  setPackBusy(true);
+  $('mrpack-import-status').textContent = '';
+  setPackProgress('mrpack-import', { text: t('Подготовка…') });
+  $('mrpack-import-progress').classList.remove('hidden');
+  const off = api.onMrpackProgress((p) => setPackProgress('mrpack-import', p));
+  try {
+    const inst = await api.importMrpack(mrpackUi.file, $('input-mrpack-name').value);
+    $('modal-mrpack-import').classList.add('hidden');
+    await loadVersionsAndInstances();
+    if (inst) selectProfile(inst.id);
+    showPage('instances');
+    toast(t('Сборка «{name}» создана', { name: inst ? inst.name : '' }));
+  } catch (e) {
+    $('mrpack-import-progress').classList.add('hidden');
+    $('mrpack-import-status').className = 'form-status error';
+    $('mrpack-import-status').textContent = errText(e);
+  } finally {
+    off();
+    setPackBusy(false);
+  }
+}
+
+async function openMrpackExport(inst) {
+  if (mrpackUi.busy) {
+    toast(t('Дождитесь окончания импорта'));
+    return;
+  }
+  mrpackUi.exportId = inst.id;
+  resetMrpackExportResult();
+  $('input-mrpack-export-name').value = inst.name;
+  $('input-mrpack-export-version').value = '1.0.0';
+  $('mrpack-export-status').textContent = '';
+  $('mrpack-export-progress').classList.add('hidden');
+  const list = $('mrpack-export-list');
+  list.innerHTML = `<div class="empty empty-sm"><p>${t('Загрузка…')}</p></div>`;
+  openModal('modal-mrpack-export');
+
+  let entries = [];
+  try {
+    entries = await api.listMrpackExportEntries(inst.id);
+  } catch (e) {
+    list.innerHTML = `<div class="empty empty-sm"><p>${esc(errText(e))}</p></div>`;
+    return;
+  }
+  if (mrpackUi.exportId !== inst.id) return;
+  list.innerHTML = '';
+  if (!entries.length) {
+    list.innerHTML = `<div class="empty empty-sm"><p>${t('В сборке пока нет файлов')}</p></div>`;
+  }
+  entries.forEach(entry => {
+    const row = document.createElement('label');
+    row.className = 'sync-check';
+    const label = PACK_ENTRY_LABELS[entry.name];
+    row.innerHTML = `
+      <input type="checkbox" value="${esc(entry.name)}" ${entry.checked ? 'checked' : ''}>
+      <span class="grow">
+        <div>${esc(entry.name)}</div>
+        ${label ? `<div class="meta">${esc(label)}</div>` : ''}
+      </span>
+      <span class="size">${entry.sizeBytes < 1024 ** 2 ? t('{n} КБ', { n: Math.max(1, Math.round(entry.sizeBytes / 1024)) }) : formatSize(entry.sizeBytes)}</span>
+    `;
+    row.querySelector('input').addEventListener('change', resetMrpackExportResult);
+    list.appendChild(row);
+  });
+  $('input-mrpack-export-name').focus();
+}
+
+// After an export the button shows the file; any change makes it export again
+function resetMrpackExportResult() {
+  if (mrpackUi.busy) return;
+  mrpackUi.exported = null;
+  $('mrpack-export-start').textContent = t('Экспортировать');
+}
+
+async function startMrpackExport() {
+  if (mrpackUi.busy) return;
+  if (mrpackUi.exported) {
+    api.revealMrpack(mrpackUi.exported);
+    return;
+  }
+  const include = [...document.querySelectorAll('#mrpack-export-list input:checked')].map(i => i.value);
+  const status = $('mrpack-export-status');
+  if (!include.length) {
+    status.className = 'form-status error';
+    status.textContent = t('Отметьте, что положить в модпак');
+    return;
+  }
+  setPackBusy(true);
+  status.textContent = '';
+  const off = api.onMrpackProgress((p) => {
+    $('mrpack-export-progress').classList.remove('hidden');
+    setPackProgress('mrpack-export', p);
+  });
+  try {
+    const res = await api.exportMrpack(mrpackUi.exportId, {
+      name: $('input-mrpack-export-name').value,
+      version: $('input-mrpack-export-version').value,
+      include
+    });
+    if (!res) return; // the save dialog was closed
+    mrpackUi.exported = res.file;
+    status.className = 'form-status';
+    status.textContent = `${t('Сохранено: {file}', { file: res.file.split(/[\\/]/).pop() })}. ${res.online
+      ? t('Ссылками на Modrinth: {linked}, файлами внутри: {packed}', { linked: res.linked, packed: res.packed })
+      : t('Modrinth недоступен — все файлы упакованы внутрь модпака')}`;
+    $('mrpack-export-start').textContent = t('Показать в папке');
+  } catch (e) {
+    status.className = 'form-status error';
+    status.textContent = errText(e);
+  } finally {
+    off();
+    $('mrpack-export-progress').classList.add('hidden');
+    setPackBusy(false);
+  }
+}
+
+function setupMrpack() {
+  $('btn-import-instance').addEventListener('click', (e) => openMenu(e.currentTarget, [
+    { label: t('Модпак .mrpack…'), icon: 'box', run: pickMrpack },
+    { label: t('Из Prism Launcher…'), icon: 'transfer', run: openPrismImport }
+  ]));
+  $('mrpack-import-start').addEventListener('click', startMrpackImport);
+  $('input-mrpack-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') startMrpackImport(); });
+  $('mrpack-export-start').addEventListener('click', startMrpackExport);
+  ['input-mrpack-export-name', 'input-mrpack-export-version'].forEach(id => $(id).addEventListener('input', resetMrpackExportResult));
+
+  const close = (modal) => () => {
+    if (mrpackUi.busy) {
+      toast(modal === 'modal-mrpack-import' ? t('Дождитесь окончания импорта') : t('Дождитесь окончания экспорта'));
+      return;
+    }
+    $(modal).classList.add('hidden');
+  };
+  $('mrpack-import-cancel').addEventListener('click', close('modal-mrpack-import'));
+  $('mrpack-import-close').addEventListener('click', close('modal-mrpack-import'));
+  $('mrpack-export-cancel').addEventListener('click', close('modal-mrpack-export'));
+  $('mrpack-export-close').addEventListener('click', close('modal-mrpack-export'));
 }
 
 // ---------- themes ----------
@@ -1517,14 +1722,20 @@ function syncMark(inst) {
   return inst.isPrism ? `<span class="sync-mark" title="${t('Синхронизируется с Prism Launcher')}">${icon('link')}</span>` : '';
 }
 
+/** The build's content page: mods, resource packs and shaders; a build without a loader has only resource packs. */
+function contentLabel(inst) {
+  return hasMods(inst) ? t('Моды, ресурспаки и шейдеры') : t('Ресурспаки');
+}
+
 function buildActionsHtml(inst) {
   return `
     <div class="row-actions">
-      ${hasMods(inst) ? `<button class="icon-btn" data-act="mods" title="${t('Моды')}">${icon('puzzle')}</button>` : ''}
+      <button class="icon-btn" data-act="mods" title="${contentLabel(inst)}">${icon(hasMods(inst) ? 'puzzle' : 'image')}</button>
       <button class="icon-btn" data-act="folder" title="${t('Открыть папку')}">${icon('folder')}</button>
       <button class="icon-btn" data-act="sync" title="${t('Перенести настройки из другой сборки')}">${icon('transfer')}</button>
       <button class="icon-btn" data-act="icon" title="${t('Иконка')}">${icon('image')}</button>
       <button class="icon-btn" data-act="copy" title="${t('Копировать')}">${icon('copy')}</button>
+      <button class="icon-btn" data-act="export" title="${t('Экспорт в .mrpack')}">${icon('upload')}</button>
       ${inst.isPrism ? '' : `<button class="icon-btn danger" data-act="delete" title="${t('Удалить')}">${icon('trash')}</button>`}
     </div>`;
 }
@@ -1541,6 +1752,7 @@ function buildActions(inst) {
     sync: () => openManualSync(inst.id),
     icon: () => openIconPicker(inst.id),
     copy: () => copyBuild(inst),
+    export: () => openMrpackExport(inst),
     delete: () => deleteBuild(inst)
   };
 }
@@ -1548,11 +1760,12 @@ function buildActions(inst) {
 /** Card "⋯" menu: the same actions as the list row buttons. */
 function buildMenuItems(inst, acts) {
   return [
-    hasMods(inst) && { label: t('Моды'), icon: 'puzzle', run: acts.mods },
+    { label: contentLabel(inst), icon: hasMods(inst) ? 'puzzle' : 'image', run: acts.mods },
     { label: t('Открыть папку'), icon: 'folder', run: acts.folder },
     { label: t('Перенести настройки из другой сборки'), icon: 'transfer', run: acts.sync },
     { label: t('Сменить иконку'), icon: 'image', run: acts.icon },
     { label: t('Копировать'), icon: 'copy', run: acts.copy },
+    { label: t('Экспорт в .mrpack'), icon: 'upload', run: acts.export },
     !inst.isPrism && 'separator',
     !inst.isPrism && { label: t('Удалить'), icon: 'trash', run: acts.delete, danger: true }
   ].filter(Boolean);
@@ -1940,19 +2153,59 @@ function openNewInstanceModal() {
 }
 
 // ================= MODS =================
-// state.mods: local files, enriched with Modrinth data once a scan finishes
-const modsUi = { filter: 'all', scanning: false, scanned: false, online: true, busy: new Set() };
+// A build's content page: its mods, resource packs or shaders (modsUi.kind), installed and in the Modrinth catalog.
+// state.mods: local files of that kind, enriched with Modrinth data once a scan finishes
+const modsUi = { kind: 'mod', filter: 'all', scanning: null, scanned: false, online: true, busy: new Set() };
 
-function openBuildMods(id, { filter = null } = {}) {
+// Texts and catalog categories of each kind (the kinds themselves are in src/content-types.js)
+const CONTENT_KINDS = {
+  mod: {
+    icon: 'puzzle', ext: 'jar', count: (n) => pluralize(n, ['мод', 'мода', 'модов']),
+    empty: t('Модов пока нет'), emptyHint: t('Найдите их в каталоге Modrinth или перетащите .jar в окно.'),
+    search: t('Поиск модов на Modrinth'), remove: t('Удалить мод?'), pick: t('Выберите мод (.jar)'),
+    drop: t('Отпустите .jar, чтобы добавить в сборку'), noneFound: t('Для этой версии Minecraft и загрузчика подходящих модов нет.'),
+    categories: ['optimization', 'utility', 'decoration', 'adventure', 'technology', 'library']
+  },
+  resourcepack: {
+    icon: 'image', ext: 'zip', count: (n) => pluralize(n, ['ресурспак', 'ресурспака', 'ресурспаков']),
+    empty: t('Ресурспаков пока нет'), emptyHint: t('Найдите их в каталоге Modrinth или перетащите .zip в окно.'),
+    search: t('Поиск ресурспаков на Modrinth'), remove: t('Удалить ресурспак?'), pick: t('Выберите ресурспак (.zip)'),
+    drop: t('Отпустите .zip, чтобы добавить ресурспак'), noneFound: t('Для этой версии Minecraft подходящих ресурспаков нет.'),
+    categories: ['vanilla-like', 'realistic', 'simplistic', 'themed', 'tweaks', 'utility', 'combat', '16x', '32x']
+  },
+  shader: {
+    icon: 'bulb', ext: 'zip', count: (n) => pluralize(n, ['шейдер', 'шейдера', 'шейдеров']),
+    empty: t('Шейдеров пока нет'), emptyHint: t('Найдите их в каталоге Modrinth или перетащите .zip в окно.'),
+    search: t('Поиск шейдеров на Modrinth'), remove: t('Удалить шейдер?'), pick: t('Выберите шейдер (.zip)'),
+    drop: t('Отпустите .zip, чтобы добавить шейдер'), noneFound: t('Для этой версии Minecraft подходящих шейдеров нет.'),
+    categories: ['vanilla-like', 'semi-realistic', 'realistic', 'fantasy', 'cartoon', 'potato']
+  }
+};
+
+/** What a build can hold: without a loader only resource packs (shaders need Iris or OptiFine, which are mods). */
+function contentKinds(inst) {
+  if (!inst) return [];
+  return inst.loader === 'vanilla' ? ['resourcepack'] : ['mod', 'resourcepack', 'shader'];
+}
+
+function kindInfo() {
+  return CONTENT_KINDS[modsUi.kind];
+}
+
+function openBuildMods(id, { filter = null, kind = null } = {}) {
   const inst = findInstance(id);
-  if (!hasMods(inst)) return;
-  const changed = state.modsTarget !== id || !!filter;
+  const kinds = contentKinds(inst);
+  if (!kinds.length) return;
+  const sameBuild = state.modsTarget === id;
+  const nextKind = kinds.includes(kind) ? kind : sameBuild && kinds.includes(modsUi.kind) ? modsUi.kind : kinds[0];
+  const changed = !sameBuild || !!filter || nextKind !== modsUi.kind;
   state.modsTarget = id;
+  modsUi.kind = nextKind;
 
   $('mods-head-icon').innerHTML = instanceIconHtml(inst);
   $('mods-title').textContent = inst.name;
   $('mods-subtitle').textContent = instanceMeta(inst);
-  $('modrinth-context').textContent = t('Только версии для Minecraft {version} и {loader}', { version: inst.version, loader: LOADER_LABELS[inst.loader] || inst.loader });
+  renderContentKind(inst);
   if (changed) {
     state.mods = [];
     modsUi.scanned = false;
@@ -1964,21 +2217,99 @@ function openBuildMods(id, { filter = null } = {}) {
       if (filter) $(b.dataset.view).classList.toggle('active', installed);
     });
     $('search-installed-mods').value = '';
+    $('mods-list').innerHTML = '';
     $('modrinth-results').innerHTML = '';
+    lastHits = null;
     if ($('view-mods-modrinth').classList.contains('active')) searchModrinth();
   }
   showPage('mods');
+}
+
+/** The kind switch, the texts and the catalog categories for the chosen kind. */
+function renderContentKind(inst) {
+  const kinds = contentKinds(inst);
+  const info = kindInfo();
+  document.querySelectorAll('#content-kind-seg button').forEach(b => {
+    b.classList.toggle('hidden', !kinds.includes(b.dataset.kind));
+    b.classList.toggle('active', b.dataset.kind === modsUi.kind);
+  });
+  $('modrinth-search-input').placeholder = info.search;
+  $('drop-overlay-text').textContent = info.drop;
+  $('modrinth-context').textContent = modsUi.kind === 'mod'
+    ? t('Только версии для Minecraft {version} и {loader}', { version: inst.version, loader: LOADER_LABELS[inst.loader] || inst.loader })
+    : modsUi.kind === 'shader'
+      ? t('Только версии для Minecraft {version} — для Iris и OptiFine', { version: inst.version })
+      : t('Только версии для Minecraft {version}', { version: inst.version });
+
+  const select = $('modrinth-category-filter');
+  const current = select.value;
+  select.innerHTML = `<option value="">${t('Все категории')}</option>`
+    + info.categories.map(c => `<option value="${c}">${esc(capitalize(CATEGORY_LABELS[c] || c))}</option>`).join('');
+  select.value = info.categories.includes(current) ? current : '';
+  renderShaderNotice();
+}
+
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function switchContentKind(kind) {
+  if (state.modsTarget && kind !== modsUi.kind) openBuildMods(state.modsTarget, { kind });
+}
+
+// ---- shaders need Iris (Oculus on Forge) or OptiFine among the build's mods ----
+const SHADER_MODS = /^(iris|oculus|optifine)/i;
+
+async function renderShaderNotice() {
+  const inst = modsInstance();
+  const notice = $('shader-notice');
+  if (!inst || modsUi.kind !== 'shader') {
+    notice.classList.add('hidden');
+    return;
+  }
+  let mods = [];
+  try {
+    mods = await api.listInstanceMods(inst.id, 'mod');
+  } catch (e) {}
+  if (modsUi.kind !== 'shader' || state.modsTarget !== inst.id) return;
+  const forge = inst.loader === 'forge';
+  $('shader-notice-text').textContent = forge
+    ? t('Шейдеры работают через Oculus или OptiFine — в этой сборке их нет.')
+    : t('Шейдеры работают через Iris или OptiFine — в этой сборке их нет.');
+  const btn = $('shader-notice-install');
+  btn.textContent = forge ? t('Установить Oculus') : t('Установить Iris');
+  btn.disabled = false;
+  notice.classList.toggle('hidden', mods.some(m => m.enabled && SHADER_MODS.test(m.fileName)));
+}
+
+async function installShaderLoader() {
+  const inst = modsInstance();
+  if (!inst) return;
+  const btn = $('shader-notice-install');
+  const [slug, name] = inst.loader === 'forge' ? ['oculus', 'Oculus'] : ['iris', 'Iris'];
+  btn.disabled = true;
+  btn.textContent = t('Загрузка…');
+  try {
+    const res = await api.installModrinthMod(slug, inst.id, 'mod');
+    const extra = res.added.length > 1 ? ` (${t('+ зависимости: {n}', { n: res.added.length - 1 })})` : '';
+    toast(t('Установлен {name}', { name }) + extra);
+    refreshInstanceCounts();
+  } catch (e) {
+    toast(errText(e), 'error', 5000);
+  }
+  renderShaderNotice();
 }
 
 /** Lists local files at once, then asks Modrinth what they are and whether updates exist. */
 async function loadMods({ force = false } = {}) {
   const inst = modsInstance();
   if (!inst) return;
+  const kind = modsUi.kind;
   if (!modsUi.scanned) {
     try {
-      const local = await api.listInstanceMods(inst.id);
-      if (state.modsTarget !== inst.id) return;
-      state.mods = local.map(m => ({ fileName: m.fileName, enabled: m.enabled, sizeBytes: m.sizeBytes }));
+      const local = await api.listInstanceMods(inst.id, kind);
+      if (state.modsTarget !== inst.id || modsUi.kind !== kind) return;
+      state.mods = local.map(m => ({ fileName: m.fileName, isDir: m.isDir, enabled: m.enabled, sizeBytes: m.sizeBytes }));
       renderModsList();
     } catch (e) {}
   }
@@ -1987,28 +2318,34 @@ async function loadMods({ force = false } = {}) {
 
 async function scanMods(force = false) {
   const inst = modsInstance();
-  if (!inst || modsUi.scanning) return;
-  modsUi.scanning = true;
+  if (!inst) return;
+  const kind = modsUi.kind;
+  // one scan per build and kind at a time; switching to another one starts its own
+  const key = `${inst.id}|${kind}`;
+  if (modsUi.scanning === key) return;
+  modsUi.scanning = key;
   $('btn-check-updates').disabled = true;
   $('btn-check-updates').classList.add('spinning');
   setScanStatus(force ? t('Проверка обновлений…') : t('Сверка с Modrinth…'));
   try {
-    const res = await api.scanInstanceMods(inst.id, force);
-    if (state.modsTarget !== inst.id) return;
+    const res = await api.scanInstanceMods(inst.id, force, kind);
+    if (state.modsTarget !== inst.id || modsUi.kind !== kind) return;
     state.mods = res.mods;
     modsUi.online = res.online;
     modsUi.scanned = true;
     renderModsList();
     if (force && res.online) {
       const n = res.mods.filter(m => m.update).length;
-      toast(n ? t('Доступно обновлений: {n}', { n }) : t('Все моды актуальны'));
+      toast(n ? t('Доступно обновлений: {n}', { n }) : kind === 'mod' ? t('Все моды актуальны') : t('Всё актуально'));
     }
   } catch (e) {
-    setScanStatus(errText(e));
+    if (modsUi.scanning === key) setScanStatus(errText(e));
   } finally {
-    modsUi.scanning = false;
-    $('btn-check-updates').disabled = false;
-    $('btn-check-updates').classList.remove('spinning');
+    if (modsUi.scanning === key) {
+      modsUi.scanning = null;
+      $('btn-check-updates').disabled = false;
+      $('btn-check-updates').classList.remove('spinning');
+    }
   }
 }
 
@@ -2017,11 +2354,12 @@ function setScanStatus(text) {
 }
 
 function modDisplayName(mod) {
-  return mod.title || mod.fileName.replace(/\.disabled$/i, '').replace(/\.jar$/i, '');
+  return mod.title || mod.fileName.replace(/\.disabled$/i, '').replace(/\.(jar|zip)$/i, '');
 }
 
 function renderModsList() {
   const inst = modsInstance();
+  const info = kindInfo();
   const list = $('mods-list');
   const q = $('search-installed-mods').value.toLowerCase();
   const mods = state.mods;
@@ -2044,7 +2382,7 @@ function renderModsList() {
   if (modsUi.scanned) {
     const known = mods.filter(m => m.projectId).length;
     setScanStatus(modsUi.online
-      ? t('{mods}, {known} найдено на Modrinth · проверено для Minecraft {version}', { mods: pluralize(mods.length, ['мод', 'мода', 'модов']), known, version: inst ? inst.version : '' })
+      ? t('{mods}, {known} найдено на Modrinth · проверено для Minecraft {version}', { mods: info.count(mods.length), known, version: inst ? inst.version : '' })
       : t('Modrinth недоступен — показаны только файлы'));
   }
 
@@ -2066,7 +2404,7 @@ function renderModsList() {
 
   list.innerHTML = '';
   if (!mods.length) {
-    list.innerHTML = `<div class="empty"><h3>${t('Модов пока нет')}</h3><p>${t('Найдите их в каталоге Modrinth или перетащите .jar в окно.')}</p></div>`;
+    list.innerHTML = `<div class="empty"><h3>${info.empty}</h3><p>${info.emptyHint}</p></div>`;
     return;
   }
   if (!visible.length) {
@@ -2086,12 +2424,14 @@ function renderModsList() {
         ${busy ? t('Обновление…') : `${icon('download', 'ic-xs')}${t('Обновить')}`}</button>`;
     } else if (mod.compatible === false) {
       status = `<span class="tag tag-warn" title="${t('Эта версия мода сделана для {versions}', { versions: esc((mod.gameVersions || []).slice(-3).join(', ')) })}">${t('Не для {version}', { version: esc(inst.version) })}</span>`;
+    } else if (mod.isDir) {
+      status = `<span class="tag" title="${t('Распакованная папка — на Modrinth не проверяется')}">${t('Папка')}</span>`;
     } else if (modsUi.scanned && modsUi.online && !mod.projectId) {
       status = `<span class="tag" title="${t('Файла нет на Modrinth — обновления не проверяются')}">${t('Не с Modrinth')}</span>`;
     }
 
     row.innerHTML = `
-      <div class="mod-icon">${mod.iconUrl ? '<img alt="">' : icon('puzzle')}</div>
+      <div class="mod-icon">${mod.iconUrl ? '<img alt="">' : icon(mod.isDir ? 'folder' : info.icon)}</div>
       <div class="trow-main">
         <div class="trow-title">${esc(modDisplayName(mod))}${mod.enabled ? '' : `<span class="off-label">${t('выключен')}</span>`}</div>
         <div class="trow-sub" title="${esc(mod.fileName)}">${mod.update
@@ -2105,12 +2445,13 @@ function renderModsList() {
     const img = row.querySelector('img');
     if (img) {
       img.src = mod.iconUrl;
-      img.onerror = () => { img.replaceWith(document.createRange().createContextualFragment(icon('puzzle'))); };
+      img.onerror = () => { img.replaceWith(document.createRange().createContextualFragment(icon(info.icon))); };
     }
 
+    const kind = modsUi.kind;
     row.querySelector('input').addEventListener('change', async (e) => {
       try {
-        await api.toggleInstanceMod(inst.id, mod.fileName, e.target.checked);
+        await api.toggleInstanceMod(inst.id, mod.fileName, e.target.checked, kind);
         await loadMods();
       } catch (err) {
         e.target.checked = !e.target.checked;
@@ -2118,9 +2459,13 @@ function renderModsList() {
       }
     });
     row.querySelector('[data-act="delete"]').addEventListener('click', async () => {
-      const ok = await dialog({ title: t('Удалить мод?'), text: modDisplayName(mod), okText: t('Удалить'), danger: true });
+      const ok = await dialog({ title: info.remove, text: modDisplayName(mod), okText: t('Удалить'), danger: true });
       if (!ok) return;
-      await api.deleteInstanceMod(inst.id, mod.fileName);
+      try {
+        await api.deleteInstanceMod(inst.id, mod.fileName, kind);
+      } catch (err) {
+        toast(errText(err), 'error');
+      }
       await loadMods();
       refreshInstanceCounts();
     });
@@ -2133,13 +2478,14 @@ function renderModsList() {
 async function updateMods(mods) {
   const inst = modsInstance();
   if (!inst || !mods.length) return;
+  const kind = modsUi.kind;
   mods.forEach(m => modsUi.busy.add(m.fileName));
   renderModsList();
   let done = 0;
   const failed = [];
   for (const mod of mods) {
     try {
-      await api.updateInstanceMod(inst.id, mod.fileName);
+      await api.updateInstanceMod(inst.id, mod.fileName, kind);
       done++;
       if (mods.length > 1) $('btn-update-all').querySelector('span').textContent = `${t('Обновление…')} ${done}/${mods.length}`;
     } catch (e) {
@@ -2149,7 +2495,7 @@ async function updateMods(mods) {
   }
   modsUi.scanned = false;
   await loadMods();
-  if (done) toast(mods.length === 1 ? t('{name} обновлён', { name: modDisplayName(mods[0]) }) : t('Обновлено модов: {n}', { n: done }));
+  if (done) toast(mods.length === 1 ? t('{name} обновлён', { name: modDisplayName(mods[0]) }) : t('Обновлено: {files}', { files: CONTENT_KINDS[kind].count(done) }));
   if (failed.length) {
     toast(t('Не удалось обновить: {n}', { n: failed.length }), 'error', 6000);
     failed.forEach(f => appendLog('error', `[MODS]: ${f}`));
@@ -2168,10 +2514,11 @@ async function refreshInstanceCounts() {
 async function addModFiles(paths) {
   const inst = modsInstance();
   if (!inst) return;
+  const kind = modsUi.kind;
   let added = 0;
   for (const p of paths) {
     try {
-      await api.addInstanceMod(inst.id, p);
+      await api.addInstanceMod(inst.id, p, kind);
       added++;
     } catch (e) {
       toast(`${p}: ${errText(e)}`, 'error');
@@ -2180,12 +2527,14 @@ async function addModFiles(paths) {
   if (added) {
     await loadMods();
     refreshInstanceCounts();
-    toast(t('Добавлено модов: {n}', { n: added }));
+    toast(t('Добавлено: {files}', { files: CONTENT_KINDS[kind].count(added) }));
   }
 }
 
 function setupMods() {
   $('btn-mods-back').addEventListener('click', () => showPage('instances'));
+  document.querySelectorAll('#content-kind-seg button').forEach(b => b.addEventListener('click', () => switchContentKind(b.dataset.kind)));
+  $('shader-notice-install').addEventListener('click', installShaderLoader);
   $('search-installed-mods').addEventListener('input', renderModsList);
   document.querySelectorAll('#mods-filters .filter').forEach(f => {
     f.addEventListener('click', () => {
@@ -2201,11 +2550,12 @@ function setupMods() {
   });
 
   $('btn-add-mod').addEventListener('click', async () => {
-    const filePath = await api.browseFile({ title: t('Выберите мод (.jar)'), filters: [{ name: 'Minecraft Mod', extensions: ['jar'] }] });
+    const info = kindInfo();
+    const filePath = await api.browseFile({ title: info.pick, filters: [{ name: info.ext === 'jar' ? 'Minecraft Mod' : 'ZIP', extensions: [info.ext] }] });
     if (filePath) addModFiles([filePath]);
   });
 
-  // Drag & drop .jar files: into the open build, or the selected build with a loader
+  // Drag & drop: files of the open kind into the open build, or the selected build
   const overlay = $('drop-overlay');
   let dragDepth = 0;
   const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
@@ -2215,7 +2565,7 @@ function setupMods() {
     if (dragDepth++ === 0) {
       if (!$('page-mods').classList.contains('active')) {
         const selected = findInstance(state.selected);
-        if (!hasMods(selected)) return;
+        if (!selected) return;
         openBuildMods(selected.id);
       }
       overlay.classList.remove('hidden');
@@ -2233,13 +2583,20 @@ function setupMods() {
     e.preventDefault();
     dragDepth = 0;
     overlay.classList.add('hidden');
+    // a modpack becomes a new build, wherever it is dropped
+    const pack = [...(e.dataTransfer?.files || [])].find(f => /\.mrpack$/i.test(f.name));
+    if (pack) {
+      openMrpackImport(pack.path);
+      return;
+    }
     if (!$('page-mods').classList.contains('active')) {
       if (e.dataTransfer?.files?.length) toast(t('Моды ставятся в сборку: откройте её моды или выберите сборку с загрузчиком модов'), 'error');
       return;
     }
-    const jars = [...(e.dataTransfer?.files || [])].filter(f => f.name.endsWith('.jar')).map(f => f.path);
-    if (jars.length) addModFiles(jars);
-    else if (e.dataTransfer?.files?.length) toast(t('Можно добавлять только .jar файлы'), 'error');
+    const ext = `.${kindInfo().ext}`;
+    const files = [...(e.dataTransfer?.files || [])].filter(f => f.name.toLowerCase().endsWith(ext)).map(f => f.path);
+    if (files.length) addModFiles(files);
+    else if (e.dataTransfer?.files?.length) toast(t('Сюда подходят только файлы {ext}', { ext }), 'error');
   });
 
   // Modrinth
@@ -2270,6 +2627,7 @@ async function searchModrinth() {
       query: $('modrinth-search-input').value.trim(),
       gameVersion: inst.version,
       loader: inst.loader,
+      kind: modsUi.kind,
       category: $('modrinth-category-filter').value,
       sortBy: $('modrinth-sort-filter').value,
       limit: 30
@@ -2285,13 +2643,17 @@ async function searchModrinth() {
 
 let lastHits = null;
 
-// Modrinth content categories; loader tags (fabric, babric, ...) are left out on purpose
+// Modrinth content categories; loader tags (fabric, iris, ...) are left out on purpose
 const CATEGORY_LABELS = {
   adventure: t('приключения'), cursed: t('странное'), decoration: t('декор'), economy: t('экономика'),
   equipment: t('снаряжение'), food: t('еда'), 'game-mechanics': t('механики'), library: t('библиотека'),
   magic: t('магия'), management: t('управление'), minigame: t('мини-игры'), mobs: t('мобы'),
   optimization: t('оптимизация'), social: t('общение'), storage: t('хранение'), technology: t('технологии'),
-  transportation: t('транспорт'), utility: t('утилиты'), worldgen: t('генерация мира')
+  transportation: t('транспорт'), utility: t('утилиты'), worldgen: t('генерация мира'),
+  // resource packs and shaders
+  'vanilla-like': t('как в ванилле'), realistic: t('реализм'), 'semi-realistic': t('полуреализм'), simplistic: t('простые'),
+  themed: t('тематические'), tweaks: t('улучшения'), combat: t('для PvP'), fantasy: t('фэнтези'), cartoon: t('мультяшные'),
+  potato: t('для слабых ПК'), '16x': '16x', '32x': '32x'
 };
 
 function installedByProject() {
@@ -2302,9 +2664,10 @@ function installedByProject() {
 
 function renderModrinthResults(hits) {
   const list = $('modrinth-results');
+  const info = kindInfo();
   list.innerHTML = '';
   if (!hits.length) {
-    list.innerHTML = `<div class="empty"><h3>${t('Ничего не найдено')}</h3><p>${t('Для этой версии Minecraft и загрузчика подходящих модов нет.')}</p></div>`;
+    list.innerHTML = `<div class="empty"><h3>${t('Ничего не найдено')}</h3><p>${info.noneFound}</p></div>`;
     return;
   }
   hits.forEach(hit => {
@@ -2312,7 +2675,7 @@ function renderModrinthResults(hits) {
     row.className = 'trow trow-catalog';
     const cats = (hit.display_categories || hit.categories || []).map(c => CATEGORY_LABELS[c]).filter(Boolean).slice(0, 3);
     row.innerHTML = `
-      <div class="mod-icon mod-icon-lg">${hit.icon_url ? '<img alt="">' : icon('puzzle')}</div>
+      <div class="mod-icon mod-icon-lg">${hit.icon_url ? '<img alt="">' : icon(info.icon)}</div>
       <div class="trow-main">
         <div class="trow-title">${esc(hit.title)} <span class="by">${esc(hit.author)}</span></div>
         <div class="trow-desc">${esc(hit.description || '')}</div>
@@ -2326,6 +2689,7 @@ function renderModrinthResults(hits) {
       img.onerror = () => { img.style.visibility = 'hidden'; };
     }
 
+    const kind = modsUi.kind;
     const slot = row.querySelector('.trow-status');
     const renderAction = () => {
       const l = installedByProject()[hit.project_id];
@@ -2347,9 +2711,10 @@ function renderModrinthResults(hits) {
           btn.disabled = true;
           btn.textContent = t('Загрузка…');
           try {
-            const res = await api.installModrinthMod(hit.project_id, inst.id);
+            const res = await api.installModrinthMod(hit.project_id, inst.id, kind);
             const extra = res.added.length > 1 ? ` (${t('+ зависимости: {n}', { n: res.added.length - 1 })})` : '';
             toast(t('Установлен {name}', { name: hit.title }) + extra);
+            if (modsUi.kind !== kind) return;
             modsUi.scanned = false;
             await loadMods();
             refreshInstanceCounts();

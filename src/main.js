@@ -33,6 +33,8 @@ const { LauncherCore } = require('./launcher-core');
 const { AccountsManager } = require('./accounts-manager');
 const { InstancesManager } = require('./instances-manager');
 const { ModrinthManager } = require('./modrinth-manager');
+const { MrpackManager } = require('./mrpack');
+const { contentType, contentDir } = require('./content-types');
 const { ElyByManager } = require('./elyby-manager');
 const optionsSync = require('./options-sync');
 const { DiskCache } = require('./disk-cache');
@@ -111,6 +113,7 @@ const accountsManager = new AccountsManager(userDataDir, currentSettings.gameDir
 const instancesManager = new InstancesManager(userDataDir, versionManager);
 instancesManager.includePrism = currentSettings.prismImport === true;
 const modrinthManager = new ModrinthManager(diskCache);
+const mrpackManager = new MrpackManager(instancesManager, loaderManager, modrinthManager);
 const elyByManager = new ElyByManager(currentSettings.gameDir);
 const launcherCore = new LauncherCore();
 const playtimeLog = new PlaytimeLog(userDataDir);
@@ -466,20 +469,63 @@ ipcMain.handle('set-instance-icon', (event, instanceId, choice) => {
   return instancesManager.setInstanceIcon(instanceId, choice);
 });
 
-ipcMain.handle('list-instance-mods', (event, instanceId) => {
-  return instancesManager.listInstanceMods(instanceId);
+// kind: 'mod' | 'resourcepack' | 'shader' (content-types.js); the mods page works with all three
+ipcMain.handle('list-instance-mods', (event, instanceId, kind = 'mod') => {
+  return instancesManager.listInstanceMods(instanceId, kind);
 });
 
-ipcMain.handle('toggle-instance-mod', (event, instanceId, fileName, enable) => {
-  return instancesManager.toggleInstanceMod(instanceId, fileName, enable);
+ipcMain.handle('toggle-instance-mod', (event, instanceId, fileName, enable, kind = 'mod') => {
+  return instancesManager.toggleInstanceMod(instanceId, fileName, enable, kind);
 });
 
-ipcMain.handle('add-instance-mod', (event, instanceId, filePath) => {
-  return instancesManager.addModToInstance(instanceId, filePath);
+ipcMain.handle('add-instance-mod', (event, instanceId, filePath, kind = 'mod') => {
+  return instancesManager.addModToInstance(instanceId, filePath, kind);
 });
 
-ipcMain.handle('delete-instance-mod', (event, instanceId, fileName) => {
-  return instancesManager.deleteInstanceMod(instanceId, fileName);
+ipcMain.handle('delete-instance-mod', (event, instanceId, fileName, kind = 'mod') => {
+  return instancesManager.deleteInstanceMod(instanceId, fileName, kind);
+});
+
+// Modrinth modpacks (.mrpack)
+ipcMain.handle('mrpack-inspect', (event, file) => mrpackManager.inspect(file));
+
+ipcMain.handle('mrpack-import', async (event, file, name) => {
+  return await mrpackManager.importPack(file, {
+    name: String(name || ''),
+    onProgress: (p) => sendToWindow('mrpack-progress', p),
+    getJava: (version) => javaForVersion(version)
+  });
+});
+
+function findInstanceOrThrow(instanceId) {
+  const inst = instancesManager.listInstances().find(i => i.id === instanceId);
+  if (!inst) throw new Error(t('Сборка не найдена'));
+  return inst;
+}
+
+ipcMain.handle('mrpack-export-entries', (event, instanceId) => {
+  return mrpackManager.listExportEntries(findInstanceOrThrow(instanceId));
+});
+
+// The file is picked here, not by the page, so the page cannot write anywhere it likes
+ipcMain.handle('mrpack-export', async (event, instanceId, options = {}) => {
+  const inst = findInstanceOrThrow(instanceId);
+  const name = String(options.name || '').trim() || inst.name;
+  const version = String(options.version || '').trim() || '1.0.0';
+  const fileName = `${name} ${version}`.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '');
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: t('Сохранить модпак'),
+    defaultPath: path.join(app.getPath('downloads'), `${fileName || 'modpack'}.mrpack`),
+    filters: [{ name: t('Модпак Modrinth'), extensions: ['mrpack'] }]
+  });
+  if (result.canceled || !result.filePath) return null;
+  const include = Array.isArray(options.include) ? options.include.map(String) : [];
+  return await mrpackManager.exportPack(inst, { name, version, include, file: result.filePath },
+    (p) => sendToWindow('mrpack-progress', p));
+});
+
+ipcMain.handle('mrpack-reveal', (event, file) => {
+  if (typeof file === 'string' && /\.mrpack$/i.test(file) && fs.existsSync(file)) shell.showItemInFolder(path.resolve(file));
 });
 
 ipcMain.handle('open-instance-folder', (event, instanceId) => {
@@ -536,29 +582,31 @@ ipcMain.handle('search-modrinth', async (event, options) => {
   return await modrinthManager.searchMods(options);
 });
 
-// Mods are installed only into a build
+// Mods, resource packs and shaders are installed only into a build
 // Version and loader always come from the build itself, never from the page
-function findModdedInstance(instanceId) {
+function findContentInstance(instanceId, kind = 'mod') {
+  contentType(kind);
   const inst = instancesManager.listInstances().find(i => i.id === instanceId);
   if (!inst) throw new Error(t('Моды можно устанавливать только в сборку'));
-  if (inst.loader === 'vanilla') throw new Error(t('В сборке без загрузчика моды не работают'));
-  return inst;
+  // resource packs work everywhere; shaders need Iris or OptiFine, which are mods
+  if (kind !== 'resourcepack' && inst.loader === 'vanilla') throw new Error(t('В сборке без загрузчика моды не работают'));
+  return { inst, dir: contentDir(inst, kind) };
 }
 
-ipcMain.handle('install-modrinth-mod', async (event, projectId, instanceId) => {
-  const inst = findModdedInstance(instanceId);
-  return await modrinthManager.installMod(projectId, inst.version, inst.loader, inst.modsDir);
+ipcMain.handle('install-modrinth-mod', async (event, projectId, instanceId, kind = 'mod') => {
+  const { inst, dir } = findContentInstance(instanceId, kind);
+  return await modrinthManager.installMod(projectId, inst.version, inst.loader, dir, kind);
 });
 
-ipcMain.handle('scan-instance-mods', async (event, instanceId, force) => {
-  const inst = findModdedInstance(instanceId);
-  return await modrinthManager.scanMods(inst.modsDir, inst.version, inst.loader, { force: !!force });
+ipcMain.handle('scan-instance-mods', async (event, instanceId, force, kind = 'mod') => {
+  const { inst, dir } = findContentInstance(instanceId, kind);
+  return await modrinthManager.scanMods(dir, inst.version, inst.loader, { force: !!force, kind });
 });
 
-ipcMain.handle('update-instance-mod', async (event, instanceId, fileName) => {
-  const inst = findModdedInstance(instanceId);
+ipcMain.handle('update-instance-mod', async (event, instanceId, fileName, kind = 'mod') => {
+  const { inst, dir } = findContentInstance(instanceId, kind);
   if (path.basename(fileName) !== fileName) throw new Error(t('Некорректное имя файла'));
-  return await modrinthManager.updateMod(inst.modsDir, fileName, inst.version, inst.loader);
+  return await modrinthManager.updateMod(dir, fileName, inst.version, inst.loader, kind);
 });
 
 // Versions & Java

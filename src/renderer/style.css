@@ -649,6 +649,18 @@ h1, h2, h3 { font-weight: 600; }
 .mods-head h1 { line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #page-mods .page-head { border-bottom: 1px solid var(--color-line); margin-bottom: 14px; padding-bottom: 0; align-items: flex-end; }
 #page-mods .mods-head { padding-bottom: 12px; }
+/* mods / resource packs / shaders switch next to the installed / catalog tabs */
+.mods-head-right { display: flex; align-items: center; gap: 22px; align-self: stretch; padding-bottom: 12px; }
+.mods-head-right .tabs { align-self: flex-end; margin-bottom: -12px; }
+
+.notice {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; margin-bottom: 12px;
+  border: 1px solid var(--color-line-strong); border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--font-size-sm); color: var(--color-text-2);
+}
+.notice > .ic { color: var(--color-accent-text); flex-shrink: 0; }
 
 .skeleton-row .sk { background: var(--color-surface-2); border-radius: 4px; animation: pulse 1.2s ease-in-out infinite; }
 .sk-icon { width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0; }
@@ -826,6 +838,17 @@ label.setting { cursor: pointer; }
 .update-title { font-size: var(--font-size-lg); font-weight: 600; }
 .update-sub { font-size: var(--font-size-sm); color: var(--color-text-2); margin-top: 2px; }
 #update-progress { margin-top: 14px; }
+
+/* Modpack import / export */
+.pack-summary { display: flex; align-items: center; gap: 12px; }
+.pack-summary-text { flex: 1; min-width: 0; }
+.pack-title { font-size: var(--font-size-lg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pack-sub { font-size: var(--font-size-sm); color: var(--color-text-2); margin-top: 2px; }
+.pack-desc { margin-top: 10px; font-size: var(--font-size-sm); color: var(--color-text-2); }
+.field-pair { display: flex; gap: 12px; }
+.field-pair .grow { min-width: 0; }
+.field-version { width: 120px; flex-shrink: 0; }
+#mrpack-export-list { max-height: 260px; overflow-y: auto; }
 .update-notes { display: flex; flex-direction: column; gap: 8px; }
 .release { padding: 10px 12px; border: 1px solid var(--color-line); border-radius: var(--radius-md); }
 .release-head { display: flex; align-items: center; gap: 8px; }

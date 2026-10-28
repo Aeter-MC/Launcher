@@ -7,6 +7,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { t } = require('./i18n/i18n');
+const { contentType, contentDir } = require('./content-types');
 
 const PRISM_INSTANCES_DIR = path.join(process.env.APPDATA || '', 'PrismLauncher', 'instances');
 const PRISM_ICONS_DIR = path.join(process.env.APPDATA || '', 'PrismLauncher', 'icons');
@@ -553,30 +554,42 @@ class InstancesManager {
   }
 
   /**
-   * Lists mods inside an instance.
+   * Folder of a build's mods, resource packs or shaders (kind, see content-types.js),
+   * and the full path of one of its entries; a name that leads out of the folder is refused.
    */
-  listInstanceMods(instanceId) {
-    const instances = this.listInstances();
-    const target = instances.find(i => i.id === instanceId);
-    if (!target || !fs.existsSync(target.modsDir)) return [];
+  contentPath(instanceId, kind, fileName = null) {
+    const target = this.listInstances().find(i => i.id === instanceId);
+    if (!target) throw new Error(t('Инстанс не найден'));
+    const dir = contentDir(target, kind);
+    if (fileName === null) return { dir };
+    if (typeof fileName !== 'string' || !fileName || path.basename(fileName) !== fileName || fileName === '..') {
+      throw new Error(t('Некорректное имя файла'));
+    }
+    return { dir, full: path.join(dir, fileName) };
+  }
+
+  /**
+   * Lists mods (or resource packs / shaders) inside an instance.
+   */
+  listInstanceMods(instanceId, kind = 'mod') {
+    const type = contentType(kind);
+    const { dir } = this.contentPath(instanceId, kind);
+    if (!fs.existsSync(dir)) return [];
 
     const list = [];
     try {
-      const files = fs.readdirSync(target.modsDir);
-      for (const file of files) {
-        const full = path.join(target.modsDir, file);
+      for (const file of fs.readdirSync(dir)) {
+        const full = path.join(dir, file);
         const stat = fs.statSync(full);
-        if (stat.isFile() && (file.endsWith('.jar') || file.endsWith('.jar.disabled') || file.endsWith('.disabled'))) {
-          const isEnabled = file.endsWith('.jar');
-          list.push({
-            fileName: file,
-            fullPath: full,
-            enabled: isEnabled,
-            sizeBytes: stat.size,
-            sizeFormatted: `${(stat.size / (1024 * 1024)).toFixed(2)} MB`,
-            name: file.replace('.disabled', '').replace('.jar', '')
-          });
-        }
+        const isDir = stat.isDirectory();
+        if (isDir ? !type.folders : !(stat.isFile() && type.file.test(file))) continue;
+        list.push({
+          fileName: file,
+          fullPath: full,
+          isDir,
+          enabled: !file.toLowerCase().endsWith('.disabled'),
+          sizeBytes: isDir ? 0 : stat.size
+        });
       }
     } catch (e) {}
 
@@ -584,60 +597,44 @@ class InstancesManager {
   }
 
   /**
-   * Toggles a mod in an instance.
+   * Toggles a mod in an instance: a switched-off file (or unpacked pack) gets ".disabled" at the end.
    */
-  toggleInstanceMod(instanceId, fileName, enable) {
-    const instances = this.listInstances();
-    const target = instances.find(i => i.id === instanceId);
-    if (!target) throw new Error(t('Инстанс не найден'));
-
-    const currPath = path.join(target.modsDir, fileName);
+  toggleInstanceMod(instanceId, fileName, enable, kind = 'mod') {
+    const { dir, full: currPath } = this.contentPath(instanceId, kind, fileName);
     if (!fs.existsSync(currPath)) throw new Error(t('Мод не найден'));
 
-    let newName;
-    if (enable) {
-      newName = fileName.replace(/\.disabled$/, '');
-      if (!newName.endsWith('.jar')) newName += '.jar';
-    } else {
-      newName = fileName.replace(/\.disabled$/, '') + '.disabled';
-    }
-
-    const newPath = path.join(target.modsDir, newName);
-    fs.renameSync(currPath, newPath);
+    const base = fileName.replace(/\.disabled$/i, '');
+    const newName = enable ? base : `${base}.disabled`;
+    fs.renameSync(currPath, path.join(dir, newName));
     return { oldName: fileName, newName, enabled: enable };
   }
 
   /**
-   * Adds a mod to an instance.
+   * Adds a mod (or resource pack / shader file) to an instance.
    */
-  addModToInstance(instanceId, sourceFilePath) {
-    const instances = this.listInstances();
-    const target = instances.find(i => i.id === instanceId);
-    if (!target) throw new Error(t('Инстанс не найден'));
+  addModToInstance(instanceId, sourceFilePath, kind = 'mod') {
+    const type = contentType(kind);
+    const fileName = path.basename(sourceFilePath);
+    if (!type.file.test(fileName)) throw new Error(t('Сюда подходят только файлы {ext}', { ext: type.ext }));
+    const { dir, full: dest } = this.contentPath(instanceId, kind, fileName);
 
-    this.ensureDir(target.modsDir);
-    const dest = path.join(target.modsDir, path.basename(sourceFilePath));
+    this.ensureDir(dir);
     fs.copyFileSync(sourceFilePath, dest);
-    return { fileName: path.basename(sourceFilePath), dest };
+    return { fileName, dest };
   }
 
   /**
-   * Deletes a mod from an instance.
+   * Deletes a mod (or resource pack / shader, also an unpacked one) from an instance.
    */
-  deleteInstanceMod(instanceId, fileName) {
-    const instances = this.listInstances();
-    const target = instances.find(i => i.id === instanceId);
-    if (!target) return false;
-
-    const p = path.join(target.modsDir, fileName);
-    if (fs.existsSync(p)) {
-      fs.unlinkSync(p);
-      return true;
-    }
-    return false;
+  deleteInstanceMod(instanceId, fileName, kind = 'mod') {
+    const { full } = this.contentPath(instanceId, kind, fileName);
+    if (!fs.existsSync(full)) return false;
+    fs.rmSync(full, { recursive: true, force: true });
+    return true;
   }
 }
 
 module.exports = {
-  InstancesManager
+  InstancesManager,
+  collectFiles
 };

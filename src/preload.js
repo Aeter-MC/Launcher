@@ -34,11 +34,24 @@ contextBridge.exposeInMainWorld('api', {
   copyInstance: (id, newName) => ipcRenderer.invoke('copy-instance', id, newName),
   deleteInstance: (id) => ipcRenderer.invoke('delete-instance', id),
   setInstanceIcon: (id, choice) => ipcRenderer.invoke('set-instance-icon', id, choice),
-  listInstanceMods: (id) => ipcRenderer.invoke('list-instance-mods', id),
-  toggleInstanceMod: (id, fileName, enable) => ipcRenderer.invoke('toggle-instance-mod', id, fileName, enable),
-  addInstanceMod: (id, filePath) => ipcRenderer.invoke('add-instance-mod', id, filePath),
-  deleteInstanceMod: (id, fileName) => ipcRenderer.invoke('delete-instance-mod', id, fileName),
+  // kind: 'mod' | 'resourcepack' | 'shader', 'mod' when left out
+  listInstanceMods: (id, kind) => ipcRenderer.invoke('list-instance-mods', id, kind),
+  toggleInstanceMod: (id, fileName, enable, kind) => ipcRenderer.invoke('toggle-instance-mod', id, fileName, enable, kind),
+  addInstanceMod: (id, filePath, kind) => ipcRenderer.invoke('add-instance-mod', id, filePath, kind),
+  deleteInstanceMod: (id, fileName, kind) => ipcRenderer.invoke('delete-instance-mod', id, fileName, kind),
   openInstanceFolder: (id) => ipcRenderer.invoke('open-instance-folder', id),
+
+  // Modrinth modpacks (.mrpack)
+  inspectMrpack: (file) => ipcRenderer.invoke('mrpack-inspect', file),
+  importMrpack: (file, name) => ipcRenderer.invoke('mrpack-import', file, name),
+  listMrpackExportEntries: (id) => ipcRenderer.invoke('mrpack-export-entries', id),
+  exportMrpack: (id, options) => ipcRenderer.invoke('mrpack-export', id, options),
+  revealMrpack: (file) => ipcRenderer.invoke('mrpack-reveal', file),
+  onMrpackProgress: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('mrpack-progress', handler);
+    return () => ipcRenderer.removeListener('mrpack-progress', handler);
+  },
 
   // Game settings transfer
   getSyncCategories: () => ipcRenderer.invoke('options-sync-categories'),
@@ -47,9 +60,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // Modrinth
   searchModrinth: (options) => ipcRenderer.invoke('search-modrinth', options),
-  installModrinthMod: (projectId, instanceId) => ipcRenderer.invoke('install-modrinth-mod', projectId, instanceId),
-  scanInstanceMods: (instanceId, force) => ipcRenderer.invoke('scan-instance-mods', instanceId, force),
-  updateInstanceMod: (instanceId, fileName) => ipcRenderer.invoke('update-instance-mod', instanceId, fileName),
+  installModrinthMod: (projectId, instanceId, kind) => ipcRenderer.invoke('install-modrinth-mod', projectId, instanceId, kind),
+  scanInstanceMods: (instanceId, force, kind) => ipcRenderer.invoke('scan-instance-mods', instanceId, force, kind),
+  updateInstanceMod: (instanceId, fileName, kind) => ipcRenderer.invoke('update-instance-mod', instanceId, fileName, kind),
 
   // Versions & Java
   getVersions: (showSnapshots) => ipcRenderer.invoke('get-versions', showSnapshots),

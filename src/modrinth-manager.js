@@ -2,12 +2,14 @@
  * modrinth-manager.js
  * Modrinth API integration: search, install into a build, recognise installed mods by file hash
  * and look for updates that match the build's Minecraft version and loader.
+ * The same works for resource packs and shaders: `kind` is one of content-types.js ('mod' by default).
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const axios = require('axios');
 const { t } = require('./i18n/i18n');
+const { contentType } = require('./content-types');
 
 const MODRINTH_API = 'https://api.modrinth.com/v2';
 const USER_AGENT = 'AeterMC/1.0.0 (contact@waruk.dev)';
@@ -15,25 +17,27 @@ const HEADERS = { 'User-Agent': USER_AGENT };
 const SCAN_CACHE_MS = 10 * 60 * 1000;
 const PROJECT_INFO_MS = 7 * 24 * 60 * 60 * 1000;
 
-function loaderList(loader) {
+/**
+ * Loaders a version has to list to fit the build. Resource packs all say "minecraft", so any fits;
+ * shaders run on Iris (Oculus on Forge) or OptiFine, and most packs list both.
+ */
+function loaderList(loader, kind = 'mod') {
+  if (kind === 'resourcepack') return [];
+  if (kind === 'shader') return ['iris', 'optifine'];
   if (!loader || loader === 'vanilla') return [];
   return loader === 'quilt' ? ['quilt', 'fabric'] : [loader.toLowerCase()];
 }
 
 /** A version fits the build only if it lists the exact Minecraft version and a matching loader. */
-function isCompatible(version, gameVersion, loader) {
+function isCompatible(version, gameVersion, loader, kind = 'mod') {
   if (!version) return false;
-  const loaders = loaderList(loader);
+  const loaders = loaderList(loader, kind);
   return (version.game_versions || []).includes(gameVersion)
     && (!loaders.length || (version.loaders || []).some(l => loaders.includes(l)));
 }
 
 function primaryFile(version) {
   return (version.files || []).find(f => f.primary) || (version.files || [])[0] || null;
-}
-
-function isModFile(name) {
-  return /\.jar(\.disabled)?$/i.test(name);
 }
 
 class ModrinthManager {
@@ -54,11 +58,11 @@ class ModrinthManager {
   }
 
   async searchMods(options = {}) {
-    const { query = '', gameVersion = '', loader = '', category = '', limit = 20, offset = 0, sortBy = 'relevance' } = options;
+    const { query = '', gameVersion = '', loader = '', category = '', limit = 20, offset = 0, sortBy = 'relevance', kind = 'mod' } = options;
 
-    const facets = [['project_type:mod']];
+    const facets = [[`project_type:${contentType(kind).projectType}`]];
     if (gameVersion) facets.push([`versions:${gameVersion}`]);
-    const loaders = loaderList(loader);
+    const loaders = loaderList(loader, kind);
     if (loaders.length) facets.push(loaders.map(l => `categories:${l}`));
     if (category) facets.push([`categories:${category.toLowerCase()}`]);
 
@@ -79,10 +83,10 @@ class ModrinthManager {
     }
   }
 
-  async getProjectVersions(projectIdOrSlug, gameVersion, loader) {
+  async getProjectVersions(projectIdOrSlug, gameVersion, loader, kind = 'mod') {
     const params = {};
     if (gameVersion) params.game_versions = JSON.stringify([gameVersion]);
-    const loaders = loaderList(loader);
+    const loaders = loaderList(loader, kind);
     if (loaders.length) params.loaders = JSON.stringify(loaders);
 
     const response = await axios.get(`${MODRINTH_API}/project/${encodeURIComponent(projectIdOrSlug)}/version`, {
@@ -91,7 +95,7 @@ class ModrinthManager {
       timeout: 10000
     });
     // The API filter is loose about loaders on multi-loader versions, so check again
-    return (response.data || []).filter(v => isCompatible(v, gameVersion, loader));
+    return (response.data || []).filter(v => isCompatible(v, gameVersion, loader, kind));
   }
 
   // ---------- local files ----------
@@ -106,11 +110,12 @@ class ModrinthManager {
     return sha1;
   }
 
-  listModFiles(modsDir) {
+  /** Files of this kind in the folder; unpacked resource packs and shaders come as folders without a hash. */
+  listModFiles(modsDir, kind = 'mod') {
     if (!fs.existsSync(modsDir)) return [];
+    const type = contentType(kind);
     const list = [];
     for (const fileName of fs.readdirSync(modsDir)) {
-      if (!isModFile(fileName)) continue;
       const fullPath = path.join(modsDir, fileName);
       let stat;
       try {
@@ -118,13 +123,15 @@ class ModrinthManager {
       } catch (e) {
         continue;
       }
-      if (!stat.isFile()) continue;
+      const isDir = stat.isDirectory();
+      if (isDir ? !type.folders : !(stat.isFile() && type.file.test(fileName))) continue;
       list.push({
         fileName,
         fullPath,
+        isDir,
         enabled: !fileName.toLowerCase().endsWith('.disabled'),
-        sizeBytes: stat.size,
-        sha1: this.sha1Of(fullPath)
+        sizeBytes: isDir ? 0 : stat.size,
+        sha1: isDir ? null : this.sha1Of(fullPath)
       });
     }
     return list;
@@ -138,23 +145,24 @@ class ModrinthManager {
     return res.data || {};
   }
 
-  async latestFor(hashes, gameVersion, loader) {
+  async latestFor(hashes, gameVersion, loader, kind = 'mod') {
     if (!hashes.length) return {};
     const body = { hashes, algorithm: 'sha1', game_versions: [gameVersion] };
-    const loaders = loaderList(loader);
+    const loaders = loaderList(loader, kind);
     if (loaders.length) body.loaders = loaders;
     const res = await axios.post(`${MODRINTH_API}/version_files/update`, body, { headers: HEADERS, timeout: 15000 });
     return res.data || {};
   }
 
-  /** Title/slug/icon of projects; names and icons rarely change, so they are kept for a week. */
+  /** Title/slug/icon/server side of projects; they rarely change, so they are kept for a week. */
   async getProjects(ids) {
     const unique = [...new Set(ids)];
     const result = {};
     const missing = [];
     for (const id of unique) {
       const known = this.projectCache.get(id);
-      if (known && Date.now() - known.time < PROJECT_INFO_MS) result[id] = known;
+      // entries cached before server_side was kept are asked again
+      if (known && 'server_side' in known && Date.now() - known.time < PROJECT_INFO_MS) result[id] = known;
       else missing.push(id);
     }
     for (let i = 0; i < missing.length; i += 100) {
@@ -164,7 +172,7 @@ class ModrinthManager {
         timeout: 15000
       });
       for (const p of res.data || []) {
-        const info = { time: Date.now(), title: p.title, slug: p.slug, icon_url: p.icon_url };
+        const info = { time: Date.now(), title: p.title, slug: p.slug, icon_url: p.icon_url, server_side: p.server_side };
         this.projectCache.set(p.id, info);
         result[p.id] = info;
       }
@@ -178,34 +186,34 @@ class ModrinthManager {
    * which project each file belongs to, whether the installed version fits the build,
    * and the newest version for exactly this Minecraft version + loader.
    */
-  async scanMods(modsDir, gameVersion, loader, { force = false } = {}) {
-    const files = this.listModFiles(modsDir);
-    const key = `${modsDir}|${gameVersion}|${loader}`;
+  async scanMods(modsDir, gameVersion, loader, { force = false, kind = 'mod' } = {}) {
+    const files = this.listModFiles(modsDir, kind);
+    const key = `${modsDir}|${gameVersion}|${loader}|${kind}`;
     const signature = files.map(f => `${f.fileName}:${f.sha1}`).sort().join(',');
     const cached = this.scanCache.get(key);
     if (!force && cached && cached.signature === signature && Date.now() - cached.time < SCAN_CACHE_MS) {
       return cached.result;
     }
 
-    const hashes = files.map(f => f.sha1);
+    const hashes = files.filter(f => f.sha1).map(f => f.sha1);
     let current = {};
     let latest = {};
     let projects = {};
     let online = true;
     try {
-      [current, latest] = await Promise.all([this.identify(hashes), this.latestFor(hashes, gameVersion, loader)]);
+      [current, latest] = await Promise.all([this.identify(hashes), this.latestFor(hashes, gameVersion, loader, kind)]);
       projects = await this.getProjects(Object.values(current).map(v => v.project_id));
     } catch (e) {
       online = false;
     }
 
     const mods = files.map(f => {
-      const cur = current[f.sha1];
+      const cur = f.sha1 ? current[f.sha1] : null;
       const project = cur ? projects[cur.project_id] : null;
-      const next = latest[f.sha1];
-      const curCompatible = cur ? isCompatible(cur, gameVersion, loader) : null;
+      const next = f.sha1 ? latest[f.sha1] : null;
+      const curCompatible = cur ? isCompatible(cur, gameVersion, loader, kind) : null;
       let update = null;
-      if (cur && next && next.id !== cur.id && isCompatible(next, gameVersion, loader)) {
+      if (cur && next && next.id !== cur.id && isCompatible(next, gameVersion, loader, kind)) {
         const newer = new Date(next.date_published) > new Date(cur.date_published);
         // Offer it when it is newer, or when the installed file is not even made for this Minecraft version
         if (newer || !curCompatible) {
@@ -214,6 +222,7 @@ class ModrinthManager {
       }
       return {
         fileName: f.fileName,
+        isDir: f.isDir,
         enabled: f.enabled,
         sizeBytes: f.sizeBytes,
         projectId: cur ? cur.project_id : null,
@@ -228,7 +237,7 @@ class ModrinthManager {
       };
     });
 
-    const result = { online, gameVersion, loader, mods };
+    const result = { online, gameVersion, loader, kind, mods };
     if (online) this.scanCache.set(key, { time: Date.now(), signature, result });
     return result;
   }
@@ -257,8 +266,8 @@ class ModrinthManager {
   }
 
   /** Files in the folder that belong to the given Modrinth projects: { projectId: [{ fileName, versionId, enabled }] } */
-  async installedProjects(modsDir) {
-    const files = this.listModFiles(modsDir);
+  async installedProjects(modsDir, kind = 'mod') {
+    const files = this.listModFiles(modsDir, kind).filter(f => f.sha1);
     const current = await this.identify(files.map(f => f.sha1));
     const map = {};
     for (const f of files) {
@@ -271,20 +280,22 @@ class ModrinthManager {
 
   /**
    * Installs the newest version of a project that fits the build, replacing an older copy
-   * and pulling in required dependencies that are missing.
+   * and, for mods, pulling in required dependencies that are missing.
    */
-  async installMod(projectId, gameVersion, loader, modsDir, _state = null) {
-    const state = _state || { installed: await this.installedProjects(modsDir), added: [], depth: 0 };
+  async installMod(projectId, gameVersion, loader, modsDir, kind = 'mod', _state = null) {
+    const state = _state || { installed: await this.installedProjects(modsDir, kind), added: [], depth: 0 };
 
-    const versions = await this.getProjectVersions(projectId, gameVersion, loader);
+    const versions = await this.getProjectVersions(projectId, gameVersion, loader, kind);
     if (!versions.length) {
-      throw new Error(t('У мода нет версии для Minecraft {version} ({loader})', { version: gameVersion, loader }));
+      throw new Error(kind === 'mod'
+        ? t('У мода нет версии для Minecraft {version} ({loader})', { version: gameVersion, loader })
+        : t('Нет версии для Minecraft {version}', { version: gameVersion }));
     }
     const version = versions[0];
     const existing = state.installed[version.project_id] || [];
 
     if (existing.some(e => e.versionId === version.id)) {
-      if (!_state) throw new Error(t('Эта версия мода уже установлена'));
+      if (!_state) throw new Error(kind === 'mod' ? t('Эта версия мода уже установлена') : t('Эта версия уже установлена'));
     } else {
       const disabled = existing.length > 0 && existing.every(e => !e.enabled);
       const newName = await this.downloadVersion(version, modsDir, { disabled });
@@ -295,13 +306,13 @@ class ModrinthManager {
       state.added.push(newName);
     }
 
-    // Required dependencies (Fabric API, libraries, ...)
-    if (state.depth < 3) {
+    // Required dependencies (Fabric API, libraries, ...); a shader's "dependency" is a mod like Iris, not another shader
+    if (kind === 'mod' && state.depth < 3) {
       for (const dep of version.dependencies || []) {
         if (dep.dependency_type !== 'required' || !dep.project_id || state.installed[dep.project_id]) continue;
         state.depth++;
         try {
-          await this.installMod(dep.project_id, gameVersion, loader, modsDir, state);
+          await this.installMod(dep.project_id, gameVersion, loader, modsDir, kind, state);
         } catch (e) {
           // a missing optional-in-practice dependency should not undo the main install
         } finally {
@@ -314,16 +325,16 @@ class ModrinthManager {
   }
 
   /** Updates one installed file to the newest version for this Minecraft version + loader. */
-  async updateMod(modsDir, fileName, gameVersion, loader) {
+  async updateMod(modsDir, fileName, gameVersion, loader, kind = 'mod') {
     const fullPath = path.join(modsDir, fileName);
-    if (!fs.existsSync(fullPath)) throw new Error(t('Файл мода не найден'));
+    if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) throw new Error(t('Файл мода не найден'));
     const sha1 = this.sha1Of(fullPath);
 
-    const [current, latest] = await Promise.all([this.identify([sha1]), this.latestFor([sha1], gameVersion, loader)]);
+    const [current, latest] = await Promise.all([this.identify([sha1]), this.latestFor([sha1], gameVersion, loader, kind)]);
     const cur = current[sha1];
     const next = latest[sha1];
     if (!cur) throw new Error(t('Мод не найден на Modrinth'));
-    if (!next || next.id === cur.id || !isCompatible(next, gameVersion, loader)) {
+    if (!next || next.id === cur.id || !isCompatible(next, gameVersion, loader, kind)) {
       throw new Error(t('Нет обновления для Minecraft {version}', { version: gameVersion }));
     }
 
@@ -336,5 +347,6 @@ class ModrinthManager {
 
 module.exports = {
   ModrinthManager,
-  isCompatible
+  isCompatible,
+  HEADERS
 };

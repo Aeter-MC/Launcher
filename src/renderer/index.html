@@ -185,6 +185,7 @@
               <button data-builds-view="grid" title="Сеткой"><svg class="ic ic-sm"><use href="#i-grid"/></svg></button>
               <button data-builds-view="list" title="Списком"><svg class="ic ic-sm"><use href="#i-list"/></svg></button>
             </div>
+            <button class="btn btn-secondary" id="btn-import-instance" aria-haspopup="menu"><svg class="ic ic-sm"><use href="#i-download"/></svg>Импорт</button>
             <button class="btn btn-primary" id="btn-new-instance"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Новая сборка</button>
           </div>
         </div>
@@ -202,10 +203,22 @@
               <div class="muted small" id="mods-subtitle"></div>
             </div>
           </div>
-          <div class="tabs" id="mods-seg">
-            <button class="active" data-view="view-mods-installed">Установленные <span class="tab-count" id="mods-tab-count"></span></button>
-            <button data-view="view-mods-modrinth">Каталог Modrinth</button>
+          <div class="mods-head-right">
+            <div class="segmented" id="content-kind-seg">
+              <button class="active" data-kind="mod">Моды</button>
+              <button data-kind="resourcepack">Ресурспаки</button>
+              <button data-kind="shader">Шейдеры</button>
+            </div>
+            <div class="tabs" id="mods-seg">
+              <button class="active" data-view="view-mods-installed">Установленные <span class="tab-count" id="mods-tab-count"></span></button>
+              <button data-view="view-mods-modrinth">Каталог Modrinth</button>
+            </div>
           </div>
+        </div>
+        <div class="notice hidden" id="shader-notice">
+          <svg class="ic"><use href="#i-bulb"/></svg>
+          <span class="grow" id="shader-notice-text"></span>
+          <button class="btn btn-secondary btn-sm" id="shader-notice-install"></button>
         </div>
 
         <div class="view active" id="view-mods-installed">
@@ -223,8 +236,8 @@
             <div class="toolbar-right">
               <button class="btn btn-secondary" id="btn-check-updates"><svg class="ic ic-sm"><use href="#i-refresh"/></svg>Проверить обновления</button>
               <button class="btn btn-primary hidden" id="btn-update-all"><svg class="ic ic-sm"><use href="#i-download"/></svg><span>Обновить все</span></button>
-              <button class="icon-btn" id="btn-open-mods-dir" title="Открыть папку mods"><svg class="ic"><use href="#i-folder"/></svg></button>
-              <button class="icon-btn" id="btn-add-mod" title="Добавить .jar с диска"><svg class="ic"><use href="#i-plus"/></svg></button>
+              <button class="icon-btn" id="btn-open-mods-dir" title="Открыть папку"><svg class="ic"><use href="#i-folder"/></svg></button>
+              <button class="icon-btn" id="btn-add-mod" title="Добавить файл с диска"><svg class="ic"><use href="#i-plus"/></svg></button>
             </div>
           </div>
           <div class="scan-status muted small" id="mods-scan-status"></div>
@@ -238,15 +251,7 @@
               <input type="text" id="modrinth-search-input" placeholder="Поиск модов на Modrinth">
             </div>
             <div class="toolbar-right">
-              <select id="modrinth-category-filter" class="select">
-                <option value="">Все категории</option>
-                <option value="optimization">Оптимизация</option>
-                <option value="utility">Утилиты</option>
-                <option value="decoration">Декор</option>
-                <option value="adventure">Приключения</option>
-                <option value="technology">Технологии</option>
-                <option value="library">Библиотеки</option>
-              </select>
+              <select id="modrinth-category-filter" class="select"></select>
               <select id="modrinth-sort-filter" class="select">
                 <option value="relevance">По релевантности</option>
                 <option value="downloads">По загрузкам</option>
@@ -261,7 +266,7 @@
 
         <div class="drop-overlay hidden" id="drop-overlay">
           <svg class="ic ic-xl"><use href="#i-upload"/></svg>
-          <div>Отпустите .jar, чтобы добавить в сборку</div>
+          <div id="drop-overlay-text">Отпустите .jar, чтобы добавить в сборку</div>
         </div>
       </section>
 
@@ -749,6 +754,72 @@
       <div class="modal-foot">
         <button class="btn btn-secondary" id="prism-cancel">Отмена</button>
         <button class="btn btn-primary" id="prism-start">Скопировать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: MODPACK IMPORT ============ -->
+  <div class="modal hidden" id="modal-mrpack-import">
+    <div class="modal-box modal-md">
+      <div class="modal-head">
+        <h3>Импорт модпака</h3>
+        <button class="icon-btn" id="mrpack-import-close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="pack-summary">
+          <div class="mod-icon mod-icon-lg"><svg class="ic"><use href="#i-box"/></svg></div>
+          <div class="pack-summary-text">
+            <div class="pack-title" id="mrpack-import-title"></div>
+            <div class="pack-sub" id="mrpack-import-sub"></div>
+          </div>
+        </div>
+        <p class="pack-desc hidden" id="mrpack-import-desc"></p>
+        <label class="field-label spaced" for="input-mrpack-name">Название сборки</label>
+        <input type="text" id="input-mrpack-name" class="input" maxlength="48">
+        <p class="hint" id="mrpack-import-files"></p>
+        <div class="prism-progress hidden" id="mrpack-import-progress">
+          <div class="progress-labels"><span id="mrpack-import-progress-text"></span><span id="mrpack-import-progress-percent"></span></div>
+          <div class="progress-track"><div class="progress-fill" id="mrpack-import-progress-fill"></div></div>
+        </div>
+        <div class="form-status" id="mrpack-import-status"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="mrpack-import-cancel">Отмена</button>
+        <button class="btn btn-primary" id="mrpack-import-start">Импортировать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: MODPACK EXPORT ============ -->
+  <div class="modal hidden" id="modal-mrpack-export">
+    <div class="modal-box modal-md">
+      <div class="modal-head">
+        <h3>Экспорт в .mrpack</h3>
+        <button class="icon-btn" id="mrpack-export-close"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="field-pair">
+          <div class="grow">
+            <label class="field-label" for="input-mrpack-export-name">Название модпака</label>
+            <input type="text" id="input-mrpack-export-name" class="input" maxlength="64">
+          </div>
+          <div class="field-version">
+            <label class="field-label" for="input-mrpack-export-version">Версия</label>
+            <input type="text" id="input-mrpack-export-version" class="input" maxlength="24">
+          </div>
+        </div>
+        <div class="field-label spaced">Что положить в модпак</div>
+        <div class="sync-checks prism-list" id="mrpack-export-list"></div>
+        <p class="hint">Моды, ресурспаки и шейдеры с Modrinth попадут в модпак ссылками, поэтому файл получится маленьким. Остальное упакуется целиком.</p>
+        <div class="prism-progress hidden" id="mrpack-export-progress">
+          <div class="progress-labels"><span id="mrpack-export-progress-text"></span><span id="mrpack-export-progress-percent"></span></div>
+          <div class="progress-track"><div class="progress-fill" id="mrpack-export-progress-fill"></div></div>
+        </div>
+        <div class="form-status" id="mrpack-export-status"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="mrpack-export-cancel">Отмена</button>
+        <button class="btn btn-primary" id="mrpack-export-start">Экспортировать</button>
       </div>
     </div>
   </div>
