@@ -1,5 +1,7 @@
 # Builds the launcher on every push to main and every pull request (by hand: Actions → Build → Run workflow).
-# The setup, the portable exe and app.asar end up in the run's artifacts.
+# The setup, the portable exe and app.asar end up in the run's artifacts. The exes are named
+# AeterMC-Setup.exe and AeterMC-portable.exe in every release (scripts/release-files.js), so the site's
+# links to releases/latest/download/<name> keep working after each new version.
 # On main, a version in package.json that has no release yet is also published: the release
 # v<version> with these files and update.json, which the launcher's updater reads (src/updater.js).
 # So releasing is: raise "version" in package.json (e.g. `npm version patch --no-git-tag-version`),

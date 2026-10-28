@@ -1,6 +1,7 @@
 /**
  * release-files.js — after `npm run build`, puts the files of a release into release/:
- *   AeterMC-Setup-<version>.exe, AeterMC-<version>-portable.exe
+ *   AeterMC-Setup.exe, AeterMC-portable.exe — without the version, so that
+ *                  releases/latest/download/<name> always gives the newest one (the site links there)
  *   app.asar     — the app itself, downloaded by the launcher's updater (src/updater.js)
  *   update.json  — { version, electron, asar: { size, sha256 } }, read by the updater
  * Used by .github/workflows/build.yml.
@@ -25,8 +26,9 @@ if (appPkg.version !== version) throw new Error(`app.asar is ${appPkg.version}, 
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out);
-for (const name of [`AeterMC-Setup-${version}.exe`, `AeterMC-${version}-portable.exe`]) {
-  fs.copyFileSync(path.join(dist, name), path.join(out, name));
+const exes = { [`AeterMC-Setup-${version}.exe`]: 'AeterMC-Setup.exe', [`AeterMC-${version}-portable.exe`]: 'AeterMC-portable.exe' };
+for (const [built, name] of Object.entries(exes)) {
+  fs.copyFileSync(path.join(dist, built), path.join(out, name));
 }
 
 const data = fs.readFileSync(asarFile);
