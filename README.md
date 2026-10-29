@@ -4,4 +4,4 @@
 
 Minecraft: Java Edition launcher based on electron
 
-**Site:** [aeter.waruk.xyz](https://aeter.waruk.xyz) (not ready yet, lol)
+**Site:** [aeter.waruk.xyz](https://aeter.waruk.xyz)
