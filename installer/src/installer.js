@@ -109,7 +109,9 @@ async function startInstall() {
     $('done-title').textContent = info.installed ? 'AeterMC обновлён' : 'AeterMC установлен';
     $('done-text').textContent = info.simulated
       ? 'Это предпросмотр: файлы не копировались.'
-      : 'Запускайте лаунчер ярлыком или из меню «Пуск». Удалить его можно в «Параметры → Приложения».';
+      : (result.shortcutsFailed && result.shortcutsFailed.length)
+        ? `Не удалось создать ярлык ${result.shortcutsFailed.join(' и ')}. Лаунчер лежит в ${dir}. Удалить его можно в «Параметры → Приложения».`
+        : 'Запускайте лаунчер ярлыком или из меню «Пуск». Удалить его можно в «Параметры → Приложения».';
     show('done', {
       primary: ['<svg class="ic ic-sm"><use href="#i-play"/></svg>Запустить', () => window.setup.launch(installedExe)],
       secondary: ['Закрыть', () => window.setup.close()]

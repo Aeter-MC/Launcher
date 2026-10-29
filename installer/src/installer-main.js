@@ -219,11 +219,15 @@ async function install({ dir, desktop, startMenu }) {
   sendProgress({ stage: 'shortcuts' });
   const links = shortcutPaths();
   const linkOptions = { target, cwd: dir, description: 'Лаунчер Minecraft', icon: target, iconIndex: 0, appUserModelId: APP_ID };
-  if (desktop) shell.writeShortcutLink(links.desktop, 'replace', linkOptions);
-  else removeOurShortcut(links.desktop, dir);
+  // 'create' also overwrites an existing shortcut; 'replace' silently fails when there is none yet
+  const shortcutsFailed = [];
+  if (desktop) {
+    if (!shell.writeShortcutLink(links.desktop, 'create', linkOptions)) shortcutsFailed.push('на рабочем столе');
+  } else removeOurShortcut(links.desktop, dir);
   ofs.mkdirSync(startMenuDir(), { recursive: true });
-  if (startMenu) shell.writeShortcutLink(links.startMenu, 'replace', linkOptions);
-  else removeOurShortcut(links.startMenu, dir);
+  if (startMenu) {
+    if (!shell.writeShortcutLink(links.startMenu, 'create', linkOptions)) shortcutsFailed.push('в меню «Пуск»');
+  } else removeOurShortcut(links.startMenu, dir);
 
   await removeLegacyNsis(dir);
   const values = [
@@ -241,7 +245,7 @@ async function install({ dir, desktop, startMenu }) {
     await exec('reg', ['add', UNINSTALL_KEY, '/v', name, '/t', type, '/d', data, '/f']);
   }
 
-  return { exe: target };
+  return { exe: target, shortcutsFailed };
 }
 
 function removeOurShortcut(lnk, dir) {
