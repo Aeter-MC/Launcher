@@ -31,6 +31,11 @@
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.8-4M4 4v4h4M4 13a8 8 0 0 0 14.8 4M20 20v-4h-4"/></symbol>
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+      <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4"/></symbol>
+      <symbol id="i-crop" viewBox="0 0 24 24"><path d="M6 2v16h16M2 6h16v16"/></symbol>
+      <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/></symbol>
+      <symbol id="i-flip" viewBox="0 0 24 24"><path d="M12 3v18M8 7 3 17h5V7zM16 7l5 10h-5V7z"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
       <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></symbol>
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
@@ -334,17 +339,38 @@
               <div class="setting-text"><div class="setting-label">Полноэкранный режим</div></div>
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-fullscreen"><span></span></span></div>
             </label>
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Оптимизация JVM</div>
+                <div class="setting-hint">Сборщик мусора и флаги под память. «Автоматически»: ZGC на Java 21+ от 8 ГБ, иначе G1 с флагами Aikar</div>
+              </div>
+              <div class="setting-control">
+                <select id="select-jvm-preset" class="select">
+                  <option value="auto">Автоматически</option>
+                  <option value="g1">G1 — флаги Aikar</option>
+                  <option value="zgc">ZGC — для 8+ ГБ</option>
+                  <option value="none">Без флагов</option>
+                </select>
+              </div>
+            </div>
             <div class="setting setting-stack">
               <div class="setting-text">
-                <div class="setting-label">Аргументы JVM</div>
-                <div class="setting-hint">Через пробел, без -Xmx/-Xms</div>
+                <div class="setting-label">Свои аргументы JVM</div>
+                <div class="setting-hint">Через пробел, без -Xmx/-Xms. Добавляются после флагов оптимизации; свой -XX:+Use…GC отключает готовые флаги</div>
               </div>
-              <input type="text" id="input-jvm-args" class="input mono" placeholder="-XX:+UseG1GC">
+              <input type="text" id="input-jvm-args" class="input mono" placeholder="-Dfile.encoding=UTF-8">
             </div>
           </div>
 
           <h2 class="group-title">Лаунчер</h2>
           <div class="group">
+            <label class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Статус в Discord</div>
+                <div class="setting-hint">Пока идёт игра, в профиле видно «Играет в AeterMC», название сборки и время</div>
+              </div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-discord"><span></span></span></div>
+            </label>
             <div class="setting">
               <div class="setting-text"><div class="setting-label">Язык</div></div>
               <div class="setting-control">
@@ -388,6 +414,13 @@
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-snapshots"><span></span></span></div>
             </label>
             <label class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Управление геймпадом</div>
+                <div class="setting-hint">Крестовина — выбор, A — нажать, B — назад, LB/RB — вкладки</div>
+              </div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-gamepad"><span></span></span></div>
+            </label>
+            <label class="setting">
               <div class="setting-text"><div class="setting-label">Анимации</div></div>
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-animations"><span></span></span></div>
             </label>
@@ -403,6 +436,9 @@
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-auto-updates"><span></span></span></div>
             </label>
           </div>
+
+          <!-- dev-tools.js (not in git) puts the developer tools here -->
+          <div id="dev-tools-slot"></div>
 
           <h2 class="group-title">Обновления</h2>
           <div class="group">
@@ -643,6 +679,146 @@
     </div>
   </div>
 
+  <!-- ============ MODAL: MOD PROBLEMS BEFORE LAUNCH (mod-check.js) ============ -->
+  <div class="modal hidden" id="modal-mod-problems">
+    <div class="modal-box modal-md">
+      <div class="modal-head">
+        <h3>Проблемы с модами</h3>
+        <button class="icon-btn" data-close-modal><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p id="mod-problems-intro"></p>
+        <div class="problem-list" id="mod-problems-list"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="mod-problems-mods">Открыть моды</button>
+        <button class="btn btn-secondary" id="mod-problems-ignore">Запустить всё равно</button>
+        <button class="btn btn-primary" id="mod-problems-retry">Запустить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: CRASH EXPLANATION (crash-analyzer.js) ============ -->
+  <div class="modal hidden" id="modal-crash">
+    <div class="modal-box modal-md">
+      <div class="modal-head">
+        <h3 id="crash-title">Игра вылетела</h3>
+        <button class="icon-btn" data-close-modal><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="crash-text" id="crash-text"></p>
+        <div class="crash-details hidden" id="crash-details"></div>
+        <div class="crash-actions" id="crash-actions"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="crash-report">Краш-репорт</button>
+        <button class="btn btn-secondary" id="crash-console">Консоль</button>
+        <button class="btn btn-primary" data-close-modal>Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: BUILD LAUNCH SETTINGS ============ -->
+  <div class="modal hidden" id="modal-launch">
+    <div class="modal-box modal-md">
+      <div class="modal-head">
+        <h3>Настройки сборки</h3>
+        <button class="icon-btn" data-close-modal><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="build-head">
+          <button class="build-head-icon" id="launch-icon" title="Сменить иконку"></button>
+          <div class="grow">
+            <label class="field-label" for="launch-name">Название</label>
+            <input type="text" id="launch-name" class="input" maxlength="64">
+          </div>
+        </div>
+        <p class="hint" id="launch-intro"></p>
+        <div class="field-label spaced">Запуск</div>
+        <div class="group launch-group">
+          <label class="setting">
+            <div class="setting-text"><div class="setting-label">Своя память</div><div class="setting-hint" id="launch-ram-inherit"></div></div>
+            <div class="setting-control"><span class="switch"><input type="checkbox" id="launch-own-ram" data-section="launch-ram"><span></span></span></div>
+          </label>
+          <div class="launch-section" id="launch-ram">
+            <div class="setting">
+              <div class="setting-text"><div class="setting-label">Максимум</div></div>
+              <div class="setting-control slider-control">
+                <input type="range" id="launch-max-ram" min="1" max="32" step="1" class="range">
+                <b class="slider-value" id="launch-max-ram-val"></b>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-text"><div class="setting-label">Начальная</div></div>
+              <div class="setting-control slider-control">
+                <input type="range" id="launch-min-ram" min="1" max="16" step="1" class="range">
+                <b class="slider-value" id="launch-min-ram-val"></b>
+              </div>
+            </div>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><div class="setting-label">Java</div></div>
+            <div class="setting-control"><select id="launch-java" class="select select-wide"></select></div>
+          </div>
+          <label class="setting">
+            <div class="setting-text"><div class="setting-label">Свои аргументы JVM</div><div class="setting-hint" id="launch-jvm-inherit"></div></div>
+            <div class="setting-control"><span class="switch"><input type="checkbox" id="launch-own-jvm" data-section="launch-jvm"><span></span></span></div>
+          </label>
+          <div class="launch-section" id="launch-jvm">
+            <div class="setting">
+              <div class="setting-text"><div class="setting-label">Оптимизация JVM</div></div>
+              <div class="setting-control">
+                <select id="launch-jvm-preset" class="select">
+                  <option value="auto">Автоматически</option>
+                  <option value="g1">G1 — флаги Aikar</option>
+                  <option value="zgc">ZGC — для 8+ ГБ</option>
+                  <option value="none">Без флагов</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting setting-stack">
+              <div class="setting-text"><div class="setting-label">Аргументы</div></div>
+              <input type="text" id="launch-jvm-args" class="input mono" placeholder="-Dfile.encoding=UTF-8">
+            </div>
+          </div>
+          <label class="setting">
+            <div class="setting-text"><div class="setting-label">Своё окно игры</div><div class="setting-hint" id="launch-window-inherit"></div></div>
+            <div class="setting-control"><span class="switch"><input type="checkbox" id="launch-own-window" data-section="launch-window"><span></span></span></div>
+          </label>
+          <div class="launch-section" id="launch-window">
+            <div class="setting">
+              <div class="setting-text"><div class="setting-label">Размер</div></div>
+              <div class="setting-control">
+                <input type="number" id="launch-res-w" class="input input-num" min="320" title="Ширина">
+                <span class="muted">×</span>
+                <input type="number" id="launch-res-h" class="input input-num" min="240" title="Высота">
+              </div>
+            </div>
+            <label class="setting">
+              <div class="setting-text"><div class="setting-label">Полноэкранный режим</div></div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="launch-fullscreen"><span></span></span></div>
+            </label>
+          </div>
+        </div>
+        <div class="field-label spaced">Настройки игры</div>
+        <div class="group launch-group">
+          <label class="setting">
+            <div class="setting-text">
+              <div class="setting-label">Не синхронизировать настройки игры</div>
+              <div class="setting-hint">Перед запуском в эту сборку ничего не переносится, и её настройки не уходят в другие — что бы ни стояло в «Перенос настроек игры». Вручную из меню сборки перенести можно</div>
+            </div>
+            <div class="setting-control"><span class="switch"><input type="checkbox" id="launch-no-sync"><span></span></span></div>
+          </label>
+        </div>
+        <p class="hint hidden" id="launch-prism">Сборка из Prism Launcher: настройки сохранятся и в Prism.</p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" id="launch-reset">По умолчанию</button>
+        <button class="btn btn-primary" id="launch-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ MODAL: NEW INSTANCE ============ -->
   <div class="modal hidden" id="modal-instance">
     <div class="modal-box modal-md">
@@ -724,7 +900,7 @@
           <label class="field-label" for="select-sync-source">Откуда</label>
           <select id="select-sync-source" class="select"></select>
         </div>
-        <div class="field-label spaced">Что перенести</div>
+        <div class="field-label spaced">Что перенести <span class="muted small">— нажмите на число изменений, чтобы увидеть их</span></div>
         <div class="sync-checks" id="sync-checks"></div>
         <div class="form-status" id="sync-status"></div>
       </div>
@@ -794,23 +970,28 @@
   <div class="modal hidden" id="modal-mrpack-export">
     <div class="modal-box modal-md">
       <div class="modal-head">
-        <h3>Экспорт в .mrpack</h3>
+        <h3>Экспорт сборки</h3>
         <button class="icon-btn" id="mrpack-export-close"><svg class="ic"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">
+        <div class="segmented export-format" id="export-format-seg">
+          <button data-export-format="mrpack" class="active">Modrinth (.mrpack)</button>
+          <button data-export-format="prism">Prism Launcher (.zip)</button>
+        </div>
         <div class="field-pair">
           <div class="grow">
-            <label class="field-label" for="input-mrpack-export-name">Название модпака</label>
+            <label class="field-label" for="input-mrpack-export-name">Название</label>
             <input type="text" id="input-mrpack-export-name" class="input" maxlength="64">
           </div>
-          <div class="field-version">
+          <div class="field-version" id="mrpack-export-version-wrap">
             <label class="field-label" for="input-mrpack-export-version">Версия</label>
             <input type="text" id="input-mrpack-export-version" class="input" maxlength="24">
           </div>
         </div>
-        <div class="field-label spaced">Что положить в модпак</div>
+        <div class="field-label spaced">Что взять из сборки</div>
         <div class="sync-checks prism-list" id="mrpack-export-list"></div>
-        <p class="hint">Моды, ресурспаки и шейдеры с Modrinth попадут в модпак ссылками, поэтому файл получится маленьким. Остальное упакуется целиком.</p>
+        <p class="hint" id="export-hint-mrpack">Моды, ресурспаки и шейдеры с Modrinth попадут в модпак ссылками, поэтому файл получится маленьким. Остальное упакуется целиком.</p>
+        <p class="hint hidden" id="export-hint-prism">Архив для «Добавить экземпляр → Импорт» в Prism Launcher: файлы упакуются целиком, вместе с загрузчиком, иконкой и настройками сборки.</p>
         <div class="prism-progress hidden" id="mrpack-export-progress">
           <div class="progress-labels"><span id="mrpack-export-progress-text"></span><span id="mrpack-export-progress-percent"></span></div>
           <div class="progress-track"><div class="progress-fill" id="mrpack-export-progress-fill"></div></div>
@@ -880,6 +1061,7 @@
         <div class="viewer-name" id="viewer-name"></div>
         <div class="viewer-sub" id="viewer-sub"></div>
       </div>
+      <button class="icon-btn" id="viewer-edit" title="Редактировать"><svg class="ic"><use href="#i-pen"/></svg></button>
       <button class="icon-btn" id="viewer-copy" title="Копировать картинку"><svg class="ic"><use href="#i-copy"/></svg></button>
       <button class="icon-btn" id="viewer-reveal" title="Показать в папке"><svg class="ic"><use href="#i-folder"/></svg></button>
       <button class="icon-btn danger" id="viewer-delete" title="В корзину"><svg class="ic"><use href="#i-trash"/></svg></button>
@@ -892,10 +1074,68 @@
     </div>
   </div>
 
+  <!-- ============ SCREENSHOT EDITOR (shot-editor.js) ============ -->
+  <div class="viewer editor hidden" id="editor">
+    <div class="viewer-top">
+      <div class="viewer-info">
+        <div class="viewer-name" id="editor-name"></div>
+        <div class="viewer-sub" id="editor-size"></div>
+      </div>
+      <button class="icon-btn" id="editor-undo" title="Отменить (Ctrl+Z)"><svg class="ic"><use href="#i-undo"/></svg></button>
+      <button class="icon-btn" id="editor-copy" title="Копировать картинку"><svg class="ic"><use href="#i-copy"/></svg></button>
+      <button class="btn btn-secondary btn-sm" id="editor-save-replace" title="Оригинал уйдёт в корзину">Заменить</button>
+      <button class="btn btn-primary btn-sm" id="editor-save-copy" title="Ctrl+S">Сохранить копией</button>
+      <button class="icon-btn" id="editor-close" title="Закрыть (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="editor-body">
+      <div class="editor-stage"><canvas id="editor-canvas"></canvas></div>
+      <aside class="editor-panel">
+        <div class="editor-label">Инструмент</div>
+        <div class="editor-tools">
+          <button class="editor-tool" data-tool="brush" title="Кисть (B)"><svg class="ic ic-sm"><use href="#i-pen"/></svg>Кисть</button>
+          <button class="editor-tool" data-tool="crop" title="Кадрировать (R)"><svg class="ic ic-sm"><use href="#i-crop"/></svg>Кадр</button>
+        </div>
+        <div id="editor-brush-opts">
+          <div class="editor-colors" id="editor-colors"></div>
+          <div class="editor-row"><span>Толщина</span><input type="range" class="range" id="editor-brush-size" min="2" max="40" value="8"></div>
+        </div>
+        <div id="editor-crop-opts" class="hidden">
+          <p class="editor-hint">Выделите область мышью</p>
+          <div class="editor-tools">
+            <button class="btn btn-secondary btn-sm" id="editor-crop-cancel">Сбросить</button>
+            <button class="btn btn-primary btn-sm" id="editor-crop-apply">Обрезать</button>
+          </div>
+        </div>
+
+        <div class="editor-label">Повернуть</div>
+        <div class="editor-tools">
+          <button class="icon-btn" id="editor-rotate-left" title="Влево"><svg class="ic ic-flip"><use href="#i-rotate"/></svg></button>
+          <button class="icon-btn" id="editor-rotate-right" title="Вправо"><svg class="ic"><use href="#i-rotate"/></svg></button>
+          <button class="icon-btn" id="editor-flip" title="Отразить"><svg class="ic"><use href="#i-flip"/></svg></button>
+        </div>
+
+        <div class="editor-label">Коррекция <span class="editor-hint-inline">двойной щелчок — сброс</span></div>
+        <div class="editor-row"><span>Яркость</span><input type="range" class="range" id="editor-brightness" min="30" max="200" value="100"><b id="editor-brightness-val">0</b></div>
+        <div class="editor-row"><span>Контраст</span><input type="range" class="range" id="editor-contrast" min="30" max="200" value="100"><b id="editor-contrast-val">0</b></div>
+        <div class="editor-row"><span>Насыщенность</span><input type="range" class="range" id="editor-saturate" min="0" max="250" value="100"><b id="editor-saturate-val">0</b></div>
+      </aside>
+    </div>
+  </div>
+
   <div class="toasts" id="toasts"></div>
+
+  <div class="gamepad-hints hidden" id="gamepad-hints" aria-hidden="true">
+    <span data-hint="adjust" class="hidden"><b class="gp-btn gp-wide">← →</b>Изменить</span>
+    <span data-hint="a"><b class="gp-btn gp-a">A</b><span>Выбрать</span></span>
+    <span><b class="gp-btn gp-b">B</b>Назад</span>
+    <span data-hint="x"><b class="gp-btn gp-x">X</b>Меню</span>
+    <span><b class="gp-btn gp-wide">LB RB</b>Вкладки</span>
+  </div>
 
   <script src="themes.js"></script>
   <script src="log-view.js"></script>
+  <script src="shot-editor.js"></script>
+  <script src="gamepad.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -368,7 +368,11 @@ h1, h2, h3 { font-weight: 600; }
   cursor: pointer;
 }
 .bcard:hover { border-color: var(--color-line-strong); background: var(--color-surface-2); }
-.bcard.selected { border-color: var(--color-accent-border); }
+.bcard.selected { background: var(--color-surface-2); border-color: var(--color-line-strong); }
+.bcard.selected::before {
+  content: ""; position: absolute; left: -1px; top: 20px; height: 22px;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--color-accent);
+}
 .bcard-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .bcard-top .inst-icon { width: 48px; height: 48px; border-radius: 7px; }
 .bcard-text { min-width: 0; }
@@ -1134,3 +1138,128 @@ label.setting { cursor: pointer; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .no-motion *, .no-motion *::before, .no-motion *::after { animation: none !important; transition: none !important; }
+
+/* build launch settings */
+.launch-group { margin-top: 10px; }
+.launch-section { border-top: 1px solid var(--color-line); padding-left: 14px; }
+.launch-section.hidden { display: none; }
+
+/* Screenshot editor: the viewer's dark overlay with a canvas and a side panel */
+.editor { z-index: 125; background: #0b0b0d; }
+.editor-body { flex: 1; min-height: 0; display: flex; }
+.editor-stage { flex: 1; min-width: 0; position: relative; overflow: hidden; }
+.editor-stage canvas { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
+.editor-panel { width: 250px; flex-shrink: 0; padding: 4px 16px 16px; overflow-y: auto; border-left: 1px solid rgba(255, 255, 255, .08); }
+.editor-label { font-size: var(--font-size-sm); color: rgba(255, 255, 255, .55); margin: 16px 0 8px; }
+.editor-label:first-child { margin-top: 8px; }
+.editor-hint-inline { opacity: .7; font-size: 11px; margin-left: 4px; }
+.editor-hint { font-size: var(--font-size-sm); color: rgba(255, 255, 255, .6); margin: 10px 0; }
+.editor-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.editor-tool {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px;
+  background: rgba(255, 255, 255, .07); color: rgba(255, 255, 255, .85);
+}
+.editor-tool:hover { background: rgba(255, 255, 255, .13); }
+.editor-tool.active { background: var(--color-accent); color: var(--color-on-accent, #fff); }
+.editor-colors { display: flex; gap: 8px; margin: 12px 0 4px; }
+.editor-color { width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .25); }
+.editor-color.active { border-color: #fff; box-shadow: 0 0 0 2px var(--color-accent); }
+.editor-row { display: grid; grid-template-columns: 92px 1fr 32px; align-items: center; gap: 8px; margin: 10px 0; font-size: var(--font-size-sm); }
+.editor-row b { text-align: right; font-weight: 500; color: rgba(255, 255, 255, .7); font-variant-numeric: tabular-nums; }
+#editor-brush-opts .editor-row { grid-template-columns: 92px 1fr; }
+.editor .btn-sm { margin: 0 2px; }
+/* confirmation dialogs open over the screenshot editor too */
+#modal-dialog { z-index: 130; }
+#modal-launch .select-wide { width: 250px; min-width: 0; }
+
+/* export format switch */
+.export-format { margin-bottom: 14px; }
+
+/* mod problems before launch and the crash explanation */
+.problem-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; max-height: 340px; overflow-y: auto; }
+.problem { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--color-surface-2, rgba(127,127,127,.08)); border: 1px solid var(--color-line); }
+.problem .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; background: var(--color-danger, #e5484d); }
+.problem.warn .dot { background: var(--color-warning, #f5a524); }
+.problem-text { flex: 1; min-width: 0; line-height: 1.4; }
+.problem .btn { flex-shrink: 0; }
+.problem.done { opacity: .55; }
+.crash-text { line-height: 1.5; }
+.crash-details { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--color-surface-2, rgba(127,127,127,.08)); font-family: var(--font-mono, monospace); font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow-y: auto; }
+.crash-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+/* transfer dialog: what will change, per category */
+.sync-cat + .sync-cat { border-top: 1px solid var(--color-line); }
+.sync-cat .sync-check + .sync-check { border-top: 0; }
+.sync-more { display: inline-flex; align-items: center; gap: 4px; font-size: var(--font-size-sm); color: var(--color-accent); padding: 2px 6px; border-radius: 6px; }
+.sync-more:hover { background: var(--color-hover); }
+.sync-more .ic { transform: rotate(90deg); transition: transform .15s; }
+.sync-more.open .ic { transform: rotate(-90deg); }
+.sync-changes { padding: 2px 12px 10px 39px; max-height: 220px; overflow-y: auto; }
+.sync-change { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; font-size: var(--font-size-sm); }
+.sync-change-label { color: var(--color-text-2); }
+.sync-change-values { white-space: nowrap; }
+.sync-change-values s { color: var(--color-text-3); }
+.sync-change-values b { font-weight: 600; }
+
+/* build settings: icon and name on top; the icon picker opens over this dialog */
+.build-head { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 12px; }
+.build-head-icon { border-radius: 12px; padding: 0; flex-shrink: 0; position: relative; }
+.build-head-icon:hover { filter: brightness(1.1); }
+.build-head-icon::after { content: ''; position: absolute; inset: -3px; border-radius: 14px; border: 2px solid transparent; }
+.build-head-icon:hover::after { border-color: var(--color-accent); }
+#modal-launch .group-sub { margin-top: 0; }
+#modal-icon { z-index: 105; }
+
+/* ================= GAMEPAD ================= */
+/* gamepad.js puts .gp-focus on the highlighted control while body.gp-mode is on */
+body.gp-mode { cursor: none; }
+/* the ring: one layer above everything, placed by gamepad.js over the highlighted control */
+.gp-ring {
+  position: fixed; left: 0; top: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 2px solid var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent), 0 4px 18px rgba(0, 0, 0, .35);
+  transition: transform .14s cubic-bezier(.2, .8, .2, 1), width .14s cubic-bezier(.2, .8, .2, 1),
+    height .14s cubic-bezier(.2, .8, .2, 1), border-radius .14s;
+}
+.gp-ring.gp-ring-jump { transition: none; }
+/* a slider taken with A: a filled ring, ← → change it */
+/* a slider taken with A: the ring sits round the knob alone (gamepad.js places it) */
+.gp-ring.gp-ring-edit {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  transition: transform .08s linear;
+}
+.range.gp-editing::-webkit-slider-thumb { background: var(--color-accent); }
+.no-motion .gp-ring { transition: none; }
+/* menu items sit edge to edge: a tint shows which one, under the ring */
+body.gp-mode .menu .gp-focus { background: var(--color-hover); }
+/* no browser focus ring next to ours */
+body.gp-mode :focus-visible { outline: none; }
+.gamepad-hints {
+  position: fixed; right: 16px; bottom: 16px;
+  z-index: 190;
+  display: flex; gap: 14px; align-items: center;
+  padding: 7px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 99px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .35);
+  font-size: var(--font-size-sm); color: var(--color-text-2);
+  pointer-events: none;
+  white-space: nowrap;
+}
+body.gp-mode .toasts { bottom: 62px; } /* above the hint bar */
+.gamepad-hints span { display: inline-flex; align-items: center; gap: 6px; }
+.gp-btn {
+  display: inline-grid; place-items: center;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 99px;
+  font-size: 11px; font-weight: 700; color: #fff;
+  background: #555;
+}
+.gp-a { background: #3f9b3f; }
+.gp-b { background: #c8433a; }
+.gp-x { background: #3a6fc8; }
+.gp-wide { border-radius: 5px; background: var(--color-line-strong); color: var(--color-text); }

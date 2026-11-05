@@ -29,3 +29,7 @@ Desktop.ini
 
 # Browser preview of the screens: a local dev tool
 preview/
+
+# Developer tools (crash samples, the "Для разработчика" block in settings): local only
+src/renderer/dev-tools.js
+src/dev-samples.js

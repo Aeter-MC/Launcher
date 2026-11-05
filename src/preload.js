@@ -34,6 +34,20 @@ contextBridge.exposeInMainWorld('api', {
   copyInstance: (id, newName) => ipcRenderer.invoke('copy-instance', id, newName),
   deleteInstance: (id) => ipcRenderer.invoke('delete-instance', id),
   setInstanceIcon: (id, choice) => ipcRenderer.invoke('set-instance-icon', id, choice),
+  setInstanceLaunch: (id, launch) => ipcRenderer.invoke('set-instance-launch', id, launch),
+  setInstanceLoader: (id, version) => ipcRenderer.invoke('set-instance-loader', id, version),
+  renameInstance: (id, name) => ipcRenderer.invoke('rename-instance', id, name),
+  checkInstanceMods: (id) => ipcRenderer.invoke('check-instance-mods', id),
+  openCrashReport: () => ipcRenderer.invoke('open-crash-report'),
+  openCrashLog: () => ipcRenderer.invoke('open-crash-log'),
+  devCrashSamples: () => ipcRenderer.invoke('dev-crash-samples'),
+  devCrashSample: (instanceId, name) => ipcRenderer.invoke('dev-crash-sample', instanceId, name),
+  devCrashLatest: (instanceId) => ipcRenderer.invoke('dev-crash-latest', instanceId),
+  onGameCrashed: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('game-crashed', handler);
+    return () => ipcRenderer.removeListener('game-crashed', handler);
+  },
   // kind: 'mod' | 'resourcepack' | 'shader', 'mod' when left out
   listInstanceMods: (id, kind) => ipcRenderer.invoke('list-instance-mods', id, kind),
   toggleInstanceMod: (id, fileName, enable, kind) => ipcRenderer.invoke('toggle-instance-mod', id, fileName, enable, kind),
@@ -98,6 +112,9 @@ contextBridge.exposeInMainWorld('api', {
   revealScreenshot: (file) => ipcRenderer.invoke('screenshot-reveal', file),
   copyScreenshot: (file) => ipcRenderer.invoke('screenshot-copy', file),
   deleteScreenshot: (file) => ipcRenderer.invoke('screenshot-delete', file),
+  readScreenshot: (file) => ipcRenderer.invoke('screenshot-read', file),
+  saveScreenshot: (file, dataUrl, mode) => ipcRenderer.invoke('screenshot-save', file, dataUrl, mode),
+  copyImageData: (dataUrl) => ipcRenderer.invoke('image-copy-data', dataUrl),
   onScreenshotsChanged: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('screenshots-changed', handler);

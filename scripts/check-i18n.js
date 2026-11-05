@@ -27,7 +27,7 @@ function jsFiles(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) return e.name === 'i18n' || e.name === 'installer' ? [] : jsFiles(full);
-    return e.name.endsWith('.js') && e.name !== 'themes.js' ? [full] : [];
+    return e.name.endsWith('.js') && e.name !== 'themes.js' && e.name !== 'dev-tools.js' ? [full] : [];
   });
 }
 

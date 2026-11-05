@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { DEFAULT_SYNC_MODES } = require('./options-sync');
+const { LEGACY_DEFAULT_ARGS } = require('./jvm-flags');
 
 const DEFAULT_MINECRAFT_DIR = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), '.minecraft');
 
@@ -35,7 +36,9 @@ function getDefaultSettings() {
     resolutionWidth: 1280,
     resolutionHeight: 720,
     fullscreen: false,
-    customJvmArgs: '-XX:+UseG1GC -Dsun.rmi.dgc.server.gcInterval=2147483646',
+    jvmPreset: 'auto', // GC and tuning flags, see jvm-flags.js
+    customJvmArgs: '',
+    discordPresence: true, // "Играет в AeterMC" in Discord while the game runs
     actionAfterLaunch: 'minimize', // 'minimize' | 'hide' | 'keep'
     showSnapshots: false,
     showConsole: true,
@@ -46,6 +49,7 @@ function getDefaultSettings() {
     buildsView: 'grid', // 'grid' | 'list'
     sidebarCollapsed: false,
     animations: true,
+    gamepad: true, // launcher control with a gamepad (renderer/gamepad.js)
     setupDone: false,
     prismImport: null, // Prism sync: null = not asked yet, true = show Prism builds in place, false = off
     // per category: 'always' | 'ask' | 'never'
@@ -69,6 +73,8 @@ class SettingsManager {
         // settings from before the first-run setup existed: that launcher is already set up
         if (!('setupDone' in parsed)) merged.setupDone = true;
         merged.optionsSync = Object.assign({}, defaults.optionsSync, parsed.optionsSync);
+        // the old default arguments are what the G1 preset now does
+        if (String(merged.customJvmArgs || '').trim() === LEGACY_DEFAULT_ARGS) merged.customJvmArgs = '';
         return merged;
       } catch (e) {
         console.error('[Settings] Error reading settings file, resetting defaults:', e.message);

@@ -28,15 +28,24 @@ const i18n = require('./i18n/i18n');
 const { t } = i18n;
 const { VersionManager } = require('./version-manager');
 const { LoaderManager } = require('./loaders');
-const { detectJavaInstallations, pickJavaFor } = require('./java-detector');
+const { detectJavaInstallations, pickJavaFor, checkJavaPath } = require('./java-detector');
+const { DiscordPresence } = require('./discord-rpc');
 const { LauncherCore } = require('./launcher-core');
 const { AccountsManager } = require('./accounts-manager');
 const { InstancesManager } = require('./instances-manager');
 const { ModrinthManager } = require('./modrinth-manager');
 const { MrpackManager } = require('./mrpack');
+const { exportPrism } = require('./prism-export');
+const { checkBuild } = require('./mod-check');
+const { scanModsDir } = require('./mod-meta');
+const { analyzeCrash } = require('./crash-analyzer');
+// developer crash samples: kept out of git, so the file may be missing
+let devSamples = null;
+try { devSamples = require('./dev-samples'); } catch (e) { /* no developer samples */ }
 const { contentType, contentDir } = require('./content-types');
 const { ElyByManager } = require('./elyby-manager');
 const optionsSync = require('./options-sync');
+const { describeChange } = require('./options-labels');
 const { DiskCache } = require('./disk-cache');
 const { PlaytimeLog } = require('./playtime-log');
 const { Updater } = require('./updater');
@@ -117,6 +126,7 @@ const mrpackManager = new MrpackManager(instancesManager, loaderManager, modrint
 const elyByManager = new ElyByManager(currentSettings.gameDir);
 const launcherCore = new LauncherCore();
 const playtimeLog = new PlaytimeLog(userDataDir);
+const discord = new DiscordPresence();
 // Launcher self-update from GitHub Releases (see updater.js)
 const updater = new Updater({
   currentVersion: app.getVersion(),
@@ -172,6 +182,25 @@ async function javaForVersion(versionId, log = () => {}) {
   } catch (e) {
     throw new Error(t('Не удалось скачать Java {version}: {error}', { version: required, error: e.message }));
   }
+}
+
+/** Major version of a java.exe (0 when unknown): from the detected list, otherwise `java -version`. */
+async function javaMajorOf(javaPath) {
+  if (!javaPath) return 0;
+  const known = (await getJavaList()).find(j => path.resolve(j.path).toLowerCase() === path.resolve(javaPath).toLowerCase());
+  if (known) return known.major || 0;
+  const info = await checkJavaPath(javaPath).catch(() => null);
+  return (info && info.major) || 0;
+}
+
+/** "Играет в AeterMC" in Discord: the build's name and its loader / Minecraft version. */
+function showDiscordPresence(inst, versionLabel) {
+  if (settingsManager.get().discordPresence === false) return;
+  const details = inst ? inst.name : `Minecraft ${versionLabel}`;
+  const state = inst
+    ? `${inst.loader !== 'vanilla' ? `${LoaderManager.label(inst.loader)} · ` : ''}Minecraft ${inst.version}`
+    : t('Без сборки');
+  discord.setActivity({ details, state, start: Date.now(), largeText: `AeterMC ${app.getVersion()}` }).catch(() => {});
 }
 
 function createWindow() {
@@ -342,9 +371,12 @@ ipcMain.handle('window-is-maximized', () => {
 });
 
 // Settings
+// the developer tools in the settings: `npm start`, or the built app started with --dev
+const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
+
 ipcMain.handle('get-settings', () => {
   const totalSystemRam = Math.round(os.totalmem() / (1024 * 1024 * 1024));
-  return { ...settingsManager.get(), totalSystemRam };
+  return { ...settingsManager.get(), totalSystemRam, isDev: IS_DEV };
 });
 
 ipcMain.handle('save-settings', (event, newSettings) => {
@@ -363,6 +395,7 @@ ipcMain.handle('save-settings', (event, newSettings) => {
     instancesManager.includePrism = newSettings.prismImport === true;
   }
   if (newSettings.autoUpdate) autoDownloadUpdate();
+  if (newSettings.discordPresence === false) discord.clear();
   return ok;
 });
 
@@ -456,6 +489,77 @@ ipcMain.handle('delete-instance', (event, instanceId) => {
 });
 
 // choice: { block } | { file: <image path> } | null. Images are center-cropped to a square, at most 256px.
+ipcMain.handle('rename-instance', (event, instanceId, name) => {
+  return instancesManager.renameInstance(instanceId, name);
+});
+
+ipcMain.handle('set-instance-loader', (event, instanceId, version) => {
+  if (launcherCore.isRunning || launcherCore.isLaunching) throw new Error(t('Сначала закройте игру'));
+  return instancesManager.setLoaderVersion(instanceId, String(version || ''));
+});
+
+// Mod problems of a build (mod-check.js), for the launch check and the build's page
+ipcMain.handle('check-instance-mods', (event, instanceId) => {
+  const inst = findInstanceOrThrow(instanceId);
+  return inst.loader === 'vanilla' ? { issues: [], mods: 0 } : checkBuild(inst);
+});
+
+// only the report the last crash analysis named can be opened
+let lastCrashReport = null;
+let lastCrashLog = null;
+ipcMain.handle('open-crash-report', () => {
+  if (lastCrashReport && fs.existsSync(lastCrashReport)) return shell.openPath(lastCrashReport);
+  return false;
+});
+ipcMain.handle('open-crash-log', () => {
+  if (lastCrashLog && fs.existsSync(lastCrashLog)) return shell.openPath(lastCrashLog);
+  return false;
+});
+
+// ---- developer tools: the crash window on samples or on a build's newest real crash report ----
+function devOnly() {
+  if (!IS_DEV) throw new Error('Developer tools are off');
+}
+
+function devSamplesOrThrow() {
+  devOnly();
+  if (!devSamples) throw new Error('dev-samples.js is missing');
+  return devSamples;
+}
+
+/** Runs the real analyzer and opens the crash window as after a real crash. */
+function showDevCrash(instanceId, input) {
+  const inst = instanceId ? instancesManager.listInstances().find(i => i.id === instanceId) : null;
+  const opt = { ...settingsManager.get(), ...((inst && inst.launch) || {}) };
+  const analysis = analyzeCrash({
+    jars: inst && inst.loader !== 'vanilla' ? scanModsDir(inst.modsDir) : [],
+    maxRam: opt.maxRam || 4, javaMajor: 17, ...input
+  });
+  lastCrashReport = analysis.reportFile;
+  lastCrashLog = analysis.logFile || null;
+  sendToWindow('game-crashed', { ...analysis, instanceId: inst ? inst.id : null, code: input.exitCode, dev: true });
+  return analysis;
+}
+
+ipcMain.handle('dev-crash-samples', () => {
+  return devSamplesOrThrow().sampleList();
+});
+
+ipcMain.handle('dev-crash-sample', (event, instanceId, name) => {
+  return showDevCrash(instanceId, devSamplesOrThrow().prepareSample(String(name)));
+});
+
+// the newest crash report of the build, whatever its age
+ipcMain.handle('dev-crash-latest', (event, instanceId) => {
+  devOnly();
+  const inst = findInstanceOrThrow(instanceId);
+  return showDevCrash(inst.id, { gameDir: inst.minecraftDir, since: 0, output: [], exitCode: -1 });
+});
+
+ipcMain.handle('set-instance-launch', (event, instanceId, launch) => {
+  return instancesManager.setLaunchSettings(instanceId, launch);
+});
+
 ipcMain.handle('set-instance-icon', (event, instanceId, choice) => {
   if (choice && choice.file) {
     let img = nativeImage.createFromPath(choice.file);
@@ -513,15 +617,27 @@ ipcMain.handle('mrpack-export', async (event, instanceId, options = {}) => {
   const name = String(options.name || '').trim() || inst.name;
   const version = String(options.version || '').trim() || '1.0.0';
   const fileName = `${name} ${version}`.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '');
-  const result = await dialog.showSaveDialog(mainWindow, {
-    title: t('Сохранить модпак'),
-    defaultPath: path.join(app.getPath('downloads'), `${fileName || 'modpack'}.mrpack`),
-    filters: [{ name: t('Модпак Modrinth'), extensions: ['mrpack'] }]
-  });
+  const prism = options.format === 'prism';
+  const result = await dialog.showSaveDialog(mainWindow, prism
+    ? {
+      title: t('Сохранить сборку для Prism Launcher'),
+      defaultPath: path.join(app.getPath('downloads'), `${fileName || 'instance'}.zip`),
+      filters: [{ name: t('Сборка Prism Launcher'), extensions: ['zip'] }]
+    }
+    : {
+      title: t('Сохранить модпак'),
+      defaultPath: path.join(app.getPath('downloads'), `${fileName || 'modpack'}.mrpack`),
+      filters: [{ name: t('Модпак Modrinth'), extensions: ['mrpack'] }]
+    });
   if (result.canceled || !result.filePath) return null;
   const include = Array.isArray(options.include) ? options.include.map(String) : [];
-  return await mrpackManager.exportPack(inst, { name, version, include, file: result.filePath },
-    (p) => sendToWindow('mrpack-progress', p));
+  const progress = (p) => sendToWindow('mrpack-progress', p);
+  if (prism) {
+    const allowed = new Set(mrpackManager.listExportEntries(inst).map(e => e.name));
+    // the archive carries the name typed in the dialog, as Prism shows it
+    return { format: 'prism', ...(await exportPrism({ ...inst, name }, { include, allowed, file: result.filePath }, progress)) };
+  }
+  return await mrpackManager.exportPack(inst, { name, version, include, file: result.filePath }, progress);
 });
 
 ipcMain.handle('mrpack-reveal', (event, file) => {
@@ -543,7 +659,7 @@ function listSyncProfiles() {
   const root = settingsManager.get().gameDir || DEFAULT_MINECRAFT_DIR;
   return [
     { id: 'global', name: t('Общая папка .minecraft'), dir: root },
-    ...instancesManager.listInstances().map(i => ({ id: i.id, name: i.name, dir: i.minecraftDir }))
+    ...instancesManager.listInstances().map(i => ({ id: i.id, name: i.name, dir: i.minecraftDir, noSync: !!(i.launch && i.launch.noOptionsSync) }))
   ];
 }
 
@@ -558,14 +674,24 @@ ipcMain.handle('options-sync-categories', () => {
 });
 
 // Without sourceId picks the profile whose settings were changed most recently
+// Builds with "don't sync" are left out of the automatic transfer both ways; a manual one (sourceId) still works.
+// details: per category the changed settings in plain words, for the dialog
 ipcMain.handle('options-sync-check', (event, targetId, sourceId) => {
   const target = findSyncProfile(targetId);
+  if (!sourceId && target.noSync) return { source: null, diff: {}, details: {}, noSync: true };
   const source = sourceId
     ? findSyncProfile(sourceId)
-    : optionsSync.findNewestSource(target.dir, listSyncProfiles());
-  if (!source) return { source: null, diff: {} };
-  const diff = optionsSync.diffOptions(optionsSync.readOptions(source.dir), optionsSync.readOptions(target.dir));
-  return { source: { id: source.id, name: source.name, time: optionsSync.getMtime(source.dir) }, diff };
+    : optionsSync.findNewestSource(target.dir, listSyncProfiles().filter(p => !p.noSync));
+  if (!source) return { source: null, diff: {}, details: {} };
+  const from = optionsSync.readOptions(source.dir);
+  const to = optionsSync.readOptions(target.dir);
+  const diff = optionsSync.diffOptions(from, to);
+  const raw = optionsSync.detailOptions(from, to);
+  // a mod's key the target has never seen and the source leaves unassigned changes nothing visible
+  const visible = (c) => !(c.from === null && /^key_/.test(c.key) && /key\.keyboard\.unknown/.test(c.to));
+  const details = Object.fromEntries(Object.entries(raw).map(([cat, list]) => [cat, list.filter(visible).map(c => describeChange(c.key, c.from, c.to))]));
+  for (const cat of Object.keys(details)) diff[cat] = details[cat].length;
+  return { source: { id: source.id, name: source.name, time: optionsSync.getMtime(source.dir) }, diff, details };
 });
 
 ipcMain.handle('options-sync-apply', (event, targetId, sourceId, categoryIds) => {
@@ -737,6 +863,48 @@ ipcMain.handle('screenshot-copy', (event, file) => {
   return true;
 });
 
+// the editor gets the picture as a data: URL: a file: image would taint its canvas
+ipcMain.handle('screenshot-read', async (event, file) => {
+  const full = checkedScreenshot(file);
+  const ext = path.extname(full).toLowerCase();
+  const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+  return `data:${mime};base64,${(await fs.promises.readFile(full)).toString('base64')}`;
+});
+
+function pngFromDataUrl(dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) throw new Error(t('Не удалось прочитать картинку'));
+  return Buffer.from(dataUrl.slice('data:image/png;base64,'.length), 'base64');
+}
+
+/**
+ * Saves an edited screenshot next to the original: mode 'copy' as <name>-edited.png (-2, -3… when taken),
+ * 'replace' puts the original in the Recycle Bin and writes <name>.png in its place.
+ */
+ipcMain.handle('screenshot-save', async (event, file, dataUrl, mode) => {
+  const full = checkedScreenshot(file);
+  const png = pngFromDataUrl(dataUrl);
+  const dir = path.dirname(full);
+  const stem = path.basename(full, path.extname(full));
+  let target;
+  if (mode === 'replace') {
+    target = path.join(dir, `${stem}.png`);
+    await shell.trashItem(full);
+  } else {
+    const clean = stem.replace(/-edited(-\d+)?$/, '');
+    target = path.join(dir, `${clean}-edited.png`);
+    for (let n = 2; fs.existsSync(target); n++) target = path.join(dir, `${clean}-edited-${n}.png`);
+  }
+  await fs.promises.writeFile(target, png);
+  return target;
+});
+
+ipcMain.handle('image-copy-data', (event, dataUrl) => {
+  const image = nativeImage.createFromBuffer(pngFromDataUrl(dataUrl));
+  if (image.isEmpty()) throw new Error(t('Не удалось прочитать картинку'));
+  clipboard.writeImage(image);
+  return true;
+});
+
 // to the Recycle Bin, so a mistake can be undone
 ipcMain.handle('screenshot-delete', async (event, file) => {
   await shell.trashItem(checkedScreenshot(file));
@@ -753,6 +921,7 @@ function sendToWindow(channel, data) {
 // true for the whole launch, including loader/Java preparation before launcherCore starts
 let launchInProgress = false;
 let runningInstanceId = null; // build the running game was started from
+let killedByUser = false; // "Stop" in the launcher is not a crash
 
 ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
   const settings = settingsManager.get();
@@ -761,7 +930,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
 
   launchInProgress = true;
   try {
-    const account = await accountsManager.getLaunchAccount();
+    const account = await accountsManager.getLaunchAccount((text) => log('warn', `[AUTH]: ${text}`));
 
     // Work out which version to start and where the game files live.
     // Versions, libraries and assets are shared in root; saves/mods are per instance.
@@ -769,13 +938,25 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
     let versionNumber;
     let customVersion = null;
     let instanceId = null;
+    let inst = null;
 
     if (launchOpts.instanceId) {
-      const inst = instancesManager.listInstances().find(i => i.id === launchOpts.instanceId);
+      inst = instancesManager.listInstances().find(i => i.id === launchOpts.instanceId);
       if (!inst) throw new Error(t('Сборка не найдена'));
       instanceId = inst.id;
       gameDir = inst.minecraftDir;
       versionNumber = inst.version;
+
+      // mods that will not start together: asked before anything is downloaded or started
+      if (inst.loader !== 'vanilla') {
+        const check = checkBuild(inst);
+        check.issues.filter(i => i.level === 'warn').forEach(i => log('warn', `[MODS]: ${i.text}`));
+        const errors = check.issues.filter(i => i.level === 'error');
+        if (errors.length && !launchOpts.ignoreModIssues) {
+          errors.forEach(i => log('warn', `[MODS]: ${i.text}`));
+          return { success: false, modIssues: check.issues, instanceId: inst.id };
+        }
+      }
 
       if (inst.loader !== 'vanilla') {
         // installed when the build was made; builds from Prism or a cleaned versions/ get it now
@@ -793,10 +974,21 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
       customVersion = resolved.custom;
     }
 
-    // Java: explicit choice from settings, otherwise the one matching the version
-    const javaPath = settings.javaPath || await javaForVersion(customVersion || versionNumber, log);
+    // the build's own launch settings over the launcher ones (see instances-manager.js LAUNCH_KEYS)
+    const own = (inst && inst.launch) || {};
+    if (Object.keys(own).length) log('info', `[LAUNCHER]: ${t('У сборки свои настройки запуска')}`);
+    const opt = { ...settings, ...own };
+
+    // Java: explicit choice from the build or settings, otherwise the one matching the version
+    const javaPath = opt.javaPath || await javaForVersion(customVersion || versionNumber, log);
+    const javaMajor = await javaMajorOf(javaPath);
 
     log('info', `[LAUNCHER]: ${t('Версия {version}, папка игры: {dir}', { version: customVersion || versionNumber, dir: gameDir })}`);
+
+    // the game's own output of this session, for the crash analysis
+    const sessionStart = Date.now();
+    const output = [];
+    killedByUser = false;
 
     await launcherCore.launch(
       {
@@ -807,22 +999,31 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
         customVersion,
         versionType: 'release',
         javaPath,
-        minRam: settings.minRam || 2,
-        maxRam: settings.maxRam || 4,
-        customJvmArgs: settings.customJvmArgs || '',
+        minRam: opt.minRam || 2,
+        maxRam: opt.maxRam || 4,
+        customJvmArgs: opt.customJvmArgs || '',
+        jvmPreset: opt.jvmPreset || 'auto',
+        javaMajor,
         profileJvmArgs: customVersion ? loaderManager.jvmArgs(customVersion) : [],
-        resolutionWidth: settings.resolutionWidth || 1280,
-        resolutionHeight: settings.resolutionHeight || 720,
-        fullscreen: settings.fullscreen || false,
+        resolutionWidth: opt.resolutionWidth || 1280,
+        resolutionHeight: opt.resolutionHeight || 720,
+        fullscreen: opt.fullscreen || false,
         elyByManager
       },
       {
         onProgress: (progressData) => sendToWindow('launch-progress', progressData),
-        onLog: (logData) => emitLog(logData),
+        onLog: (logData) => {
+          if (logData.type === 'stdout' || logData.type === 'error') {
+            output.push(String(logData.message));
+            if (output.length > 3000) output.splice(0, output.length - 3000);
+          }
+          emitLog(logData);
+        },
         onLaunched: () => {
           if (instanceId) instancesManager.markLaunched(instanceId);
           runningInstanceId = instanceId;
           sendToWindow('game-launched', instanceId);
+          showDiscordPresence(inst, customVersion || versionNumber);
           if (!mainWindow || mainWindow.isDestroyed()) return;
           if (settings.actionAfterLaunch === 'minimize') {
             mainWindow.minimize();
@@ -832,6 +1033,25 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
         },
         onClose: (code, durationSeconds) => {
           runningInstanceId = null;
+          discord.clear();
+          // a crash: an error exit code, or a crash report written during the session
+          if (!killedByUser) {
+            try {
+              const analysis = analyzeCrash({
+                gameDir, since: sessionStart, output, exitCode: code,
+                jars: inst && inst.loader !== 'vanilla' ? scanModsDir(inst.modsDir) : [],
+                maxRam: opt.maxRam || 4, javaMajor
+              });
+              if ((code !== 0 && code !== null) || analysis.reportFile) {
+                lastCrashReport = analysis.reportFile;
+                lastCrashLog = analysis.logFile || null;
+                log('error', `[CRASH]: ${analysis.title}. ${analysis.text}`);
+                sendToWindow('game-crashed', { ...analysis, instanceId, code });
+              }
+            } catch (e) {
+              console.error('[Crash analysis]', e);
+            }
+          }
           playtimeLog.add(durationSeconds || 0);
           if (instanceId) {
             instancesManager.updatePlaytime(instanceId, durationSeconds || 0);
@@ -883,5 +1103,6 @@ ipcMain.handle('update-open-page', (event, all) => {
 app.on('will-quit', () => updater.startSwap(false));
 
 ipcMain.handle('kill-game', () => {
+  killedByUser = true;
   return launcherCore.kill();
 });

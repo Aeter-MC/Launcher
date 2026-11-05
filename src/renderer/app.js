@@ -262,6 +262,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupHome();
   setupInstances();
   setupIconPicker();
+  setupLaunchSettings();
+  setupProblems();
   setupMods();
   setupPrismImport();
   setupMrpack();
@@ -270,6 +272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupScreenshots();
   setupSubscriptions();
   setupSetup();
+  setupGamepad();
   restoreGameState();
 
   await loadSettings();
@@ -285,6 +288,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadVersionsAndInstances();
   await maybeRunSetup();
   startBackgroundUpdateChecks();
+  setupDevTools();
 
   appendLog('info', t('[LAUNCHER]: AeterMC готов к работе'));
 });
@@ -498,12 +502,42 @@ function showPage(name) {
   if (name === 'screenshots') loadScreenshots(true);
 }
 
+// ================= GAMEPAD =================
+let gamepadNav = null;
+
+function setupGamepad() {
+  if (typeof createGamepadNav !== 'function') return;
+  gamepadNav = createGamepadNav({
+    // B with nothing open: a build's mods go back to the builds, other pages to the home page
+    onBack: () => {
+      const page = document.querySelector('.page.active');
+      const name = page ? page.id.replace('page-', '') : 'home';
+      if (name === 'mods') showPage('instances');
+      else if (name !== 'home') showPage('home');
+    },
+    onTab: (step) => {
+      const tabs = [...document.querySelectorAll('.nav-item')].filter(i => !i.classList.contains('hidden'));
+      if (!tabs.length) return;
+      const cur = tabs.findIndex(i => i.classList.contains('active'));
+      const next = tabs[(cur + step + tabs.length) % tabs.length];
+      showPage(next.dataset.tab);
+    }
+  });
+}
+
 function applySidebarCollapsed(collapsed) {
   document.body.classList.toggle('sidebar-collapsed', collapsed);
   $('btn-sidebar-toggle').title = collapsed ? t('Развернуть меню') : t('Свернуть меню');
 }
 
 function setupNavigation() {
+  // A clicked button keeps focus, and the next key press (or a gamepad that Steam turns into keys)
+  // draws the browser's focus ring on it out of nowhere. Buttons let go of focus after a mouse click.
+  document.addEventListener('click', (e) => {
+    if (!e.detail) return; // a keyboard or scripted click
+    const el = e.target.closest && e.target.closest('button, a[href], [tabindex]');
+    if (el && document.activeElement === el) el.blur();
+  });
   $('btn-sidebar-toggle').addEventListener('click', () => {
     const collapsed = !document.body.classList.contains('sidebar-collapsed');
     applySidebarCollapsed(collapsed);
@@ -807,6 +841,10 @@ async function loadSettings() {
   applyConsoleVisibility();
   $('select-launch-action').value = s.actionAfterLaunch || 'minimize';
   $('input-jvm-args').value = s.customJvmArgs || '';
+  $('select-jvm-preset').value = s.jvmPreset || 'auto';
+  $('check-discord').checked = s.discordPresence !== false;
+  $('check-gamepad').checked = s.gamepad !== false;
+  if (gamepadNav) gamepadNav.setEnabled(s.gamepad !== false);
 }
 
 function updateRamLabels() {
@@ -842,7 +880,8 @@ function saveSettingsFromForm() {
       resolutionHeight: parseInt($('input-res-h').value, 10) || 720,
       fullscreen: $('check-fullscreen').checked,
       actionAfterLaunch: $('select-launch-action').value,
-      customJvmArgs: $('input-jvm-args').value.trim()
+      customJvmArgs: $('input-jvm-args').value.trim(),
+      jvmPreset: $('select-jvm-preset').value
     });
     renderHero();
   }, 350);
@@ -853,7 +892,14 @@ function setupSettings() {
     $(id).addEventListener('input', () => { updateRamLabels(); saveSettingsFromForm(); });
   });
   ['input-res-w', 'input-res-h', 'input-jvm-args'].forEach(id => $(id).addEventListener('input', saveSettingsFromForm));
-  ['check-fullscreen', 'select-launch-action', 'select-java'].forEach(id => $(id).addEventListener('change', saveSettingsFromForm));
+  ['check-fullscreen', 'select-launch-action', 'select-java', 'select-jvm-preset'].forEach(id => $(id).addEventListener('change', saveSettingsFromForm));
+  $('check-discord').addEventListener('change', () => saveSettings({ discordPresence: $('check-discord').checked }));
+
+  $('check-gamepad').addEventListener('change', () => {
+    const on = $('check-gamepad').checked;
+    if (gamepadNav) gamepadNav.setEnabled(on);
+    saveSettings({ gamepad: on });
+  });
 
   $('check-animations').addEventListener('change', () => {
     document.documentElement.classList.toggle('no-motion', !$('check-animations').checked);
@@ -1102,6 +1148,7 @@ async function openMrpackExport(inst) {
     return;
   }
   mrpackUi.exportId = inst.id;
+  setExportFormat(mrpackUi.exportFormat || 'mrpack');
   resetMrpackExportResult();
   $('input-mrpack-export-name').value = inst.name;
   $('input-mrpack-export-version').value = '1.0.0';
@@ -1141,6 +1188,16 @@ async function openMrpackExport(inst) {
   $('input-mrpack-export-name').focus();
 }
 
+/** 'mrpack' | 'prism': Prism takes everything as files and has no pack version. */
+function setExportFormat(format) {
+  mrpackUi.exportFormat = format;
+  document.querySelectorAll('#export-format-seg button').forEach(b => b.classList.toggle('active', b.dataset.exportFormat === format));
+  $('mrpack-export-version-wrap').classList.toggle('hidden', format === 'prism');
+  $('export-hint-mrpack').classList.toggle('hidden', format === 'prism');
+  $('export-hint-prism').classList.toggle('hidden', format !== 'prism');
+  resetMrpackExportResult();
+}
+
 // After an export the button shows the file; any change makes it export again
 function resetMrpackExportResult() {
   if (mrpackUi.busy) return;
@@ -1158,7 +1215,7 @@ async function startMrpackExport() {
   const status = $('mrpack-export-status');
   if (!include.length) {
     status.className = 'form-status error';
-    status.textContent = t('Отметьте, что положить в модпак');
+    status.textContent = t('Отметьте, что взять из сборки');
     return;
   }
   setPackBusy(true);
@@ -1171,12 +1228,15 @@ async function startMrpackExport() {
     const res = await api.exportMrpack(mrpackUi.exportId, {
       name: $('input-mrpack-export-name').value,
       version: $('input-mrpack-export-version').value,
+      format: mrpackUi.exportFormat,
       include
     });
     if (!res) return; // the save dialog was closed
     mrpackUi.exported = res.file;
     status.className = 'form-status';
-    status.textContent = `${t('Сохранено: {file}', { file: res.file.split(/[\\/]/).pop() })}. ${res.online
+    status.textContent = `${t('Сохранено: {file}', { file: res.file.split(/[\\/]/).pop() })}. ${res.format === 'prism'
+      ? t('Файлов в архиве: {n}', { n: res.packed })
+      : res.online
       ? t('Ссылками на Modrinth: {linked}, файлами внутри: {packed}', { linked: res.linked, packed: res.packed })
       : t('Modrinth недоступен — все файлы упакованы внутрь модпака')}`;
     $('mrpack-export-start').textContent = t('Показать в папке');
@@ -1191,6 +1251,9 @@ async function startMrpackExport() {
 }
 
 function setupMrpack() {
+  document.querySelectorAll('#export-format-seg button').forEach(b => b.addEventListener('click', () => {
+    if (!mrpackUi.busy) setExportFormat(b.dataset.exportFormat);
+  }));
   $('btn-import-instance').addEventListener('click', (e) => openMenu(e.currentTarget, [
     { label: t('Модпак .mrpack…'), icon: 'box', run: pickMrpack },
     { label: t('Из Prism Launcher…'), icon: 'transfer', run: openPrismImport }
@@ -1732,10 +1795,10 @@ function buildActionsHtml(inst) {
     <div class="row-actions">
       <button class="icon-btn" data-act="mods" title="${contentLabel(inst)}">${icon(hasMods(inst) ? 'puzzle' : 'image')}</button>
       <button class="icon-btn" data-act="folder" title="${t('Открыть папку')}">${icon('folder')}</button>
+      <button class="icon-btn" data-act="launch" title="${t('Настройки сборки')}">${icon('settings')}</button>
       <button class="icon-btn" data-act="sync" title="${t('Перенести настройки из другой сборки')}">${icon('transfer')}</button>
-      <button class="icon-btn" data-act="icon" title="${t('Иконка')}">${icon('image')}</button>
       <button class="icon-btn" data-act="copy" title="${t('Копировать')}">${icon('copy')}</button>
-      <button class="icon-btn" data-act="export" title="${t('Экспорт в .mrpack')}">${icon('upload')}</button>
+      <button class="icon-btn" data-act="export" title="${t('Экспорт сборки')}">${icon('upload')}</button>
       ${inst.isPrism ? '' : `<button class="icon-btn danger" data-act="delete" title="${t('Удалить')}">${icon('trash')}</button>`}
     </div>`;
 }
@@ -1750,6 +1813,7 @@ function buildActions(inst) {
     mods: () => openBuildMods(inst.id),
     folder: () => api.openInstanceFolder(inst.id),
     sync: () => openManualSync(inst.id),
+    launch: () => openLaunchSettings(inst.id),
     icon: () => openIconPicker(inst.id),
     copy: () => copyBuild(inst),
     export: () => openMrpackExport(inst),
@@ -1762,10 +1826,10 @@ function buildMenuItems(inst, acts) {
   return [
     { label: contentLabel(inst), icon: hasMods(inst) ? 'puzzle' : 'image', run: acts.mods },
     { label: t('Открыть папку'), icon: 'folder', run: acts.folder },
+    { label: t('Настройки сборки'), icon: 'settings', run: acts.launch },
     { label: t('Перенести настройки из другой сборки'), icon: 'transfer', run: acts.sync },
-    { label: t('Сменить иконку'), icon: 'image', run: acts.icon },
     { label: t('Копировать'), icon: 'copy', run: acts.copy },
-    { label: t('Экспорт в .mrpack'), icon: 'upload', run: acts.export },
+    { label: t('Экспорт сборки'), icon: 'upload', run: acts.export },
     !inst.isPrism && 'separator',
     !inst.isPrism && { label: t('Удалить'), icon: 'trash', run: acts.delete, danger: true }
   ].filter(Boolean);
@@ -1780,6 +1844,256 @@ function bindBuildActions(el, inst) {
     const act = b.dataset.act;
     if (act === 'menu') b.addEventListener('click', () => openMenu(b, buildMenuItems(inst, acts)));
     else if (acts[act]) b.addEventListener('click', acts[act]);
+  });
+}
+
+// ---------- mod problems before launch, crash explanation ----------
+let problemsInstanceId = null;
+
+/** A fix from mod-check.js / crash-analyzer.js: { type: 'disable'|'loader'|'search'|'mods'|'launch-settings', … } */
+async function runFix(instanceId, fix, button) {
+  const inst = findInstance(instanceId);
+  try {
+    switch (fix.type) {
+      case 'disable':
+        await api.toggleInstanceMod(instanceId, fix.file, false, 'mod');
+        toast(t('Мод выключен: {file}', { file: fix.file }));
+        break;
+      case 'loader': {
+        const updated = await api.setInstanceLoader(instanceId, fix.version);
+        const i = state.instances.findIndex(x => x.id === instanceId);
+        if (updated && i >= 0) state.instances[i] = updated;
+        renderAll();
+        toast(t('Загрузчик {version} установится при запуске', { version: fix.version }));
+        break;
+      }
+      case 'search':
+        closeAllModals();
+        openBuildMods(instanceId, { kind: 'mod' });
+        document.querySelector('#mods-seg button[data-view="view-mods-modrinth"]')?.click();
+        $('modrinth-search-input').value = fix.query;
+        searchModrinth();
+        return;
+      case 'mods':
+        closeAllModals();
+        if (inst) openBuildMods(instanceId, { kind: 'mod' });
+        return;
+      case 'launch-settings':
+        closeAllModals();
+        openLaunchSettings(instanceId);
+        return;
+      case 'log':
+        await api.openCrashLog();
+        return;
+      case 'console':
+        closeAllModals();
+        if (state.settings.showConsole === false) api.openConsoleWindow();
+        else showPage('logs');
+        return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.closest('.problem')?.classList.add('done');
+    }
+    refreshInstanceCounts().then(renderAll);
+  } catch (e) {
+    toast(errText(e), 'error');
+  }
+}
+
+function closeAllModals() {
+  document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
+}
+
+function showModProblems(instanceId, issues) {
+  problemsInstanceId = instanceId;
+  const inst = findInstance(instanceId);
+  const errors = issues.filter(i => i.level === 'error').length;
+  $('mod-problems-intro').textContent = t('В сборке «{name}» найдено проблем: {n}. С ними игра, скорее всего, не запустится.', { name: inst ? inst.name : '', n: errors });
+  const list = $('mod-problems-list');
+  list.innerHTML = '';
+  issues.forEach(issue => {
+    const row = document.createElement('div');
+    row.className = `problem ${issue.level}`;
+    row.innerHTML = `<span class="dot"></span><div class="problem-text">${esc(issue.text)}</div>`;
+    if (issue.fix && issue.fix.label) {
+      const b = document.createElement('button');
+      b.className = 'btn btn-secondary btn-sm';
+      b.textContent = issue.fix.label;
+      b.addEventListener('click', () => runFix(instanceId, issue.fix, b));
+      row.appendChild(b);
+    }
+    list.appendChild(row);
+  });
+  openModal('modal-mod-problems');
+}
+
+function showCrash(data) {
+  state.crashShownAt = Date.now();
+  problemsInstanceId = data.instanceId;
+  $('crash-title').textContent = data.title;
+  $('crash-text').textContent = data.text;
+  $('crash-details').textContent = data.details || '';
+  $('crash-details').classList.toggle('hidden', !data.details);
+  $('crash-report').classList.toggle('hidden', !data.reportFile);
+  const actions = $('crash-actions');
+  actions.innerHTML = '';
+  (data.actions || []).filter(a => data.instanceId || a.type === 'log' || a.type === 'console').forEach(action => {
+    const b = document.createElement('button');
+    b.className = `btn ${action.type === 'disable' || action.type === 'loader' ? 'btn-secondary' : 'btn-ghost'} btn-sm`;
+    b.textContent = action.label;
+    b.addEventListener('click', () => runFix(data.instanceId, action, b));
+    actions.appendChild(b);
+  });
+  openModal('modal-crash');
+}
+
+function setupProblems() {
+  $('mod-problems-ignore').addEventListener('click', () => {
+    $('modal-mod-problems').classList.add('hidden');
+    handleLaunch({ ignoreModIssues: true });
+  });
+  // after fixes: check again, and start if nothing is left
+  $('mod-problems-retry').addEventListener('click', () => {
+    $('modal-mod-problems').classList.add('hidden');
+    handleLaunch();
+  });
+  $('mod-problems-mods').addEventListener('click', () => runFix(problemsInstanceId, { type: 'mods' }));
+  $('crash-report').addEventListener('click', () => api.openCrashReport());
+  $('crash-console').addEventListener('click', () => {
+    $('modal-crash').classList.add('hidden');
+    if (state.settings.showConsole === false) api.openConsoleWindow();
+    else showPage('logs');
+  });
+  api.onGameCrashed(showCrash);
+}
+
+// ---------- developer tools (settings, only in `npm start` or with --dev) ----------
+// They live in dev-tools.js, which is kept out of git (.gitignore): without the file there are none.
+function setupDevTools() {
+  if (!state.settings.isDev) return;
+  const script = document.createElement('script');
+  script.src = 'dev-tools.js';
+  script.onload = () => { if (typeof initDevTools === 'function') initDevTools(); };
+  script.onerror = () => script.remove();
+  document.body.appendChild(script);
+}
+
+// ---------- build launch settings ----------
+let launchTargetId = null;
+
+const JVM_PRESET_LABELS = {
+  auto: () => t('Автоматически'), g1: () => t('G1 — флаги Aikar'), zgc: () => t('ZGC — для 8+ ГБ'), none: () => t('Без флагов')
+};
+
+function updateLaunchSections() {
+  document.querySelectorAll('#modal-launch [data-section]').forEach(sw => {
+    $(sw.dataset.section).classList.toggle('hidden', !sw.checked);
+  });
+  $('launch-max-ram-val').textContent = t('{n} ГБ', { n: $('launch-max-ram').value });
+  $('launch-min-ram-val').textContent = t('{n} ГБ', { n: $('launch-min-ram').value });
+}
+
+function openLaunchSettings(instanceId) {
+  const inst = findInstance(instanceId);
+  if (!inst) return;
+  launchTargetId = instanceId;
+  const s = state.settings;
+  $('launch-name').value = inst.name;
+  $('launch-icon').innerHTML = instanceIconHtml(inst);
+  const own = inst.launch || {};
+  const total = s.totalSystemRam || 8;
+
+  $('launch-intro').textContent = t('Выключенное работает по умолчанию — как в настройках лаунчера.');
+  $('launch-prism').classList.toggle('hidden', !inst.isPrism);
+  $('launch-ram-inherit').textContent = t('Сейчас {max} ГБ, начальная {min} ГБ', { max: s.maxRam || 4, min: s.minRam || 2 });
+  $('launch-jvm-inherit').textContent = t('Сейчас: {preset}', { preset: (JVM_PRESET_LABELS[s.jvmPreset || 'auto'] || JVM_PRESET_LABELS.auto)() })
+    + (s.customJvmArgs ? ` · ${s.customJvmArgs}` : '');
+  $('launch-window-inherit').textContent = s.fullscreen ? t('Сейчас на весь экран') : t('Сейчас {w}×{h}', { w: s.resolutionWidth || 1280, h: s.resolutionHeight || 720 });
+
+  $('launch-max-ram').max = Math.max(2, Math.min(total, 32));
+  $('launch-min-ram').max = Math.max(1, Math.min(total, 16));
+  $('launch-own-ram').checked = own.maxRam != null || own.minRam != null;
+  $('launch-max-ram').value = own.maxRam || s.maxRam || 4;
+  $('launch-min-ram').value = own.minRam || s.minRam || 2;
+
+  const java = $('launch-java');
+  java.innerHTML = '';
+  const add = (value, text) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    java.appendChild(o);
+  };
+  add('', s.javaPath ? t('По умолчанию ({path})', { path: s.javaPath }) : t('По умолчанию (автоматически)'));
+  (state.javaList || []).forEach(j => add(j.path, `Java ${j.major || '?'} — ${j.path}`));
+  if (own.javaPath && ![...java.options].some(o => o.value === own.javaPath)) add(own.javaPath, t('Свой путь — {path}', { path: own.javaPath }));
+  java.value = own.javaPath || '';
+
+  $('launch-own-jvm').checked = own.jvmPreset != null || own.customJvmArgs != null;
+  $('launch-jvm-preset').value = own.jvmPreset || s.jvmPreset || 'auto';
+  $('launch-jvm-args').value = own.customJvmArgs != null ? own.customJvmArgs : (s.customJvmArgs || '');
+
+  $('launch-own-window').checked = own.resolutionWidth != null || own.resolutionHeight != null || own.fullscreen != null;
+  $('launch-res-w').value = own.resolutionWidth || s.resolutionWidth || 1280;
+  $('launch-res-h').value = own.resolutionHeight || s.resolutionHeight || 720;
+  $('launch-fullscreen').checked = own.fullscreen != null ? own.fullscreen : !!s.fullscreen;
+  $('launch-no-sync').checked = !!own.noOptionsSync;
+
+  updateLaunchSections();
+  openModal('modal-launch');
+}
+
+async function saveLaunchSettings(launch, { reset = false } = {}) {
+  try {
+    const inst = findInstance(launchTargetId);
+    const name = $('launch-name').value.trim();
+    if (!name) {
+      $('launch-name').focus();
+      return toast(t('Введите название сборки'), 'error');
+    }
+    if (inst && name !== inst.name) await api.renameInstance(launchTargetId, name);
+    const updated = await api.setInstanceLaunch(launchTargetId, launch);
+    const i = state.instances.findIndex(x => x.id === launchTargetId);
+    if (updated && i >= 0) state.instances[i] = updated;
+    $('modal-launch').classList.add('hidden');
+    renderAll();
+    toast(reset ? t('Параметры сброшены по умолчанию') : t('Настройки сборки сохранены'));
+  } catch (e) {
+    toast(errText(e), 'error');
+  }
+}
+
+function setupLaunchSettings() {
+  $('launch-icon').addEventListener('click', () => openIconPicker(launchTargetId));
+  $('launch-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('launch-save').click(); });
+  document.querySelectorAll('#modal-launch [data-section]').forEach(sw => sw.addEventListener('change', updateLaunchSections));
+  ['launch-max-ram', 'launch-min-ram'].forEach(id => $(id).addEventListener('input', () => {
+    if (+$('launch-min-ram').value > +$('launch-max-ram').value) {
+      if (id === 'launch-max-ram') $('launch-min-ram').value = $('launch-max-ram').value;
+      else $('launch-max-ram').value = $('launch-min-ram').value;
+    }
+    updateLaunchSections();
+  }));
+  $('launch-reset').addEventListener('click', () => saveLaunchSettings({}, { reset: true }));
+  $('launch-save').addEventListener('click', () => {
+    const launch = {};
+    if ($('launch-own-ram').checked) {
+      launch.maxRam = +$('launch-max-ram').value;
+      launch.minRam = +$('launch-min-ram').value;
+    }
+    if ($('launch-java').value) launch.javaPath = $('launch-java').value;
+    if ($('launch-own-jvm').checked) {
+      launch.jvmPreset = $('launch-jvm-preset').value;
+      launch.customJvmArgs = $('launch-jvm-args').value.trim();
+    }
+    if ($('launch-own-window').checked) {
+      launch.resolutionWidth = parseInt($('launch-res-w').value, 10) || 1280;
+      launch.resolutionHeight = parseInt($('launch-res-h').value, 10) || 720;
+      launch.fullscreen = $('launch-fullscreen').checked;
+    }
+    if ($('launch-no-sync').checked) launch.noOptionsSync = true;
+    saveLaunchSettings(launch);
   });
 }
 
@@ -1821,6 +2135,7 @@ async function applyInstanceIcon(choice) {
     if (updated && i >= 0) state.instances[i] = updated;
     renderAll();
     if (state.modsTarget === iconPickerId) $('mods-head-icon').innerHTML = instanceIconHtml(updated);
+    if (launchTargetId === iconPickerId) $('launch-icon').innerHTML = instanceIconHtml(updated);
     renderIconPicker();
   } catch (e) {
     toast(errText(e), 'error');
@@ -2786,7 +3101,7 @@ function pluralChanges(n) {
  * Shows the transfer dialog. Resolves with the chosen category ids, or null when skipped.
  * manual: lets the user pick the source profile.
  */
-function syncDialog({ targetId, sourceId, diff, categories, manual }) {
+function syncDialog({ targetId, sourceId, diff, details = {}, categories, manual }) {
   return new Promise(resolve => {
     const modal = $('modal-sync');
     const checks = $('sync-checks');
@@ -2794,6 +3109,7 @@ function syncDialog({ targetId, sourceId, diff, categories, manual }) {
     const sourceSelect = $('select-sync-source');
     let currentSource = sourceId;
     let currentDiff = diff;
+    let currentDetails = details;
 
     $('sync-source-wrap').classList.toggle('hidden', !manual);
     $('sync-skip').textContent = manual ? t('Отмена') : t('Не переносить');
@@ -2805,18 +3121,40 @@ function syncDialog({ targetId, sourceId, diff, categories, manual }) {
         : t('В «{source}» настройки игры менялись позже, чем в «{target}». Перенести их перед запуском?', { source: profileName(currentSource), target: profileName(targetId) });
     };
 
+    // each category: a checkbox, and under it, on demand, every setting that will change (old → new)
     const renderChecks = () => {
       checks.innerHTML = '';
       categories.forEach(cat => {
         const n = (currentDiff && currentDiff[cat.id]) || 0;
+        const changes = (currentDetails && currentDetails[cat.id]) || [];
+        const wrap = document.createElement('div');
+        wrap.className = 'sync-cat';
         const row = document.createElement('label');
         row.className = `sync-check ${n ? '' : 'off'}`;
         row.innerHTML = `
           <input type="checkbox" value="${cat.id}" ${n ? 'checked' : 'disabled'}>
           <span>${esc(cat.label)}</span>
-          <span class="muted small">${n ? pluralChanges(n) : t('совпадает')}</span>
+          ${n && changes.length
+            ? `<button type="button" class="sync-more">${pluralChanges(n)}${icon('chevron', 'ic-xs')}</button>`
+            : `<span class="muted small">${n ? pluralChanges(n) : t('совпадает')}</span>`}
         `;
-        checks.appendChild(row);
+        wrap.appendChild(row);
+        if (n && changes.length) {
+          const list = document.createElement('div');
+          list.className = 'sync-changes hidden';
+          list.innerHTML = changes.map(c => `
+            <div class="sync-change">
+              <span class="sync-change-label">${esc(c.label)}</span>
+              <span class="sync-change-values"><s>${esc(c.from == null ? '—' : c.from)}</s> → <b>${esc(c.to)}</b></span>
+            </div>`).join('');
+          wrap.appendChild(list);
+          row.querySelector('.sync-more').addEventListener('click', (e) => {
+            e.preventDefault(); // the button sits inside the label: don't toggle the checkbox
+            const open = list.classList.toggle('hidden') === false;
+            e.currentTarget.classList.toggle('open', open);
+          });
+        }
+        checks.appendChild(wrap);
       });
     };
 
@@ -2832,7 +3170,9 @@ function syncDialog({ targetId, sourceId, diff, categories, manual }) {
       currentSource = sourceSelect.value;
       sourceSelect.onchange = async () => {
         currentSource = sourceSelect.value;
-        currentDiff = (await api.checkOptionsSync(targetId, currentSource)).diff;
+        const fresh = await api.checkOptionsSync(targetId, currentSource);
+        currentDiff = fresh.diff;
+        currentDetails = fresh.details || {};
         renderChecks();
       };
     }
@@ -2883,7 +3223,7 @@ async function maybeSyncOptions(targetId) {
 
   let chosen = [...always];
   if (ask.length) {
-    const answer = await syncDialog({ targetId, sourceId: check.source.id, diff: check.diff, categories: ask, manual: false });
+    const answer = await syncDialog({ targetId, sourceId: check.source.id, diff: check.diff, details: check.details, categories: ask, manual: false });
     if (answer) chosen.push(...answer.categories);
   }
 
@@ -2914,13 +3254,16 @@ async function openManualSync(targetId) {
   } catch (e) {}
   let sourceId = check.source ? check.source.id : null;
   let diff = check.diff;
+  let details = check.details;
   if (!sourceId) {
     sourceId = ['global', ...state.instances.map(i => i.id)].find(id => id !== targetId);
     if (!sourceId) return;
-    diff = (await api.checkOptionsSync(targetId, sourceId)).diff;
+    const fresh = await api.checkOptionsSync(targetId, sourceId);
+    diff = fresh.diff;
+    details = fresh.details;
   }
 
-  const answer = await syncDialog({ targetId, sourceId, diff, categories: state.syncCategories, manual: true });
+  const answer = await syncDialog({ targetId, sourceId, diff, details, categories: state.syncCategories, manual: true });
   if (!answer) return;
   try {
     const count = await api.applyOptionsSync(targetId, answer.sourceId, answer.categories);
@@ -2963,7 +3306,7 @@ function setProgress(percent, text) {
   if (text) $('progress-text').textContent = text;
 }
 
-async function handleLaunch() {
+async function handleLaunch({ ignoreModIssues = false } = {}) {
   if (state.isLaunching || state.isGameRunning || !state.selected) return;
 
   state.isLaunching = true;
@@ -2977,10 +3320,15 @@ async function handleLaunch() {
 
   appendLog('info', `[LAUNCHER]: ${inst ? t('Запуск сборки «{name}»', { name: inst.name }) : t('Запуск {version}', { version: state.selected })}`);
 
-  const result = await api.launchGame(inst ? { instanceId: inst.id } : { version: state.selected })
+  const result = await api.launchGame(inst ? { instanceId: inst.id, ignoreModIssues } : { version: state.selected })
     .catch(e => ({ success: false, error: errText(e) }));
 
   state.isLaunching = false;
+  if (result.modIssues) {
+    setLaunchUi('idle');
+    showModProblems(result.instanceId, result.modIssues);
+    return;
+  }
   if (!result.success) {
     setLaunchUi('idle');
     appendLog('error', `[LAUNCHER]: ${result.error}`);
@@ -3048,7 +3396,8 @@ function setupSubscriptions() {
     state.isGameRunning = false;
     state.runningInstanceId = null;
     setLaunchUi('idle');
-    if (code && code !== 0) {
+    // a crash the launcher could explain has its own window (game-crashed comes just before)
+    if (code && code !== 0 && Date.now() - (state.crashShownAt || 0) > 3000) {
       toast(t('Игра завершилась с ошибкой (код {code}). Подробности в консоли.', { code }), 'error', 6000);
       $('log-indicator').classList.add('active', 'error');
     }
@@ -3220,6 +3569,17 @@ function setupScreenshots() {
     }
   });
   $('viewer-delete').addEventListener('click', deleteCurrentShot);
+  $('viewer-edit').addEventListener('click', () => currentShot() && shotEditor.open(currentShot()));
+  shotEditor.setup({
+    api, t, toast,
+    ask: () => dialog({ title: t('Закрыть редактор?'), text: t('Изменения не сохранятся.'), okText: t('Закрыть'), danger: true }),
+    // the folder watcher adds the new file; the viewer moves to it once it is listed
+    onSaved: async (file) => {
+      await loadScreenshots(true);
+      const index = visibleShots().findIndex(s => s.path === file);
+      if (index >= 0) openViewer(index);
+    }
+  });
   // a click on the dark backdrop closes the viewer
   document.querySelector('.viewer-stage').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeViewer();
@@ -3231,6 +3591,7 @@ function setupScreenshots() {
     else if (e.key === 'ArrowRight') openViewer(state.viewerIndex + 1);
     else if (e.key === 'Delete') deleteCurrentShot();
     else if (e.key === 'c' && e.ctrlKey) $('viewer-copy').click();
+    else if (e.key === 'e') $('viewer-edit').click();
   });
 }
 

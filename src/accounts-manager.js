@@ -27,6 +27,16 @@ function publicAccount(acc) {
   return out;
 }
 
+/** True when Microsoft's login server resolves and answers within a few seconds. */
+async function isOnline() {
+  try {
+    await require('axios').head('https://login.live.com/', { timeout: 4000, validateStatus: () => true });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 class AccountsManager {
   constructor(userDataDir, gameDir) {
     this.filePath = path.join(userDataDir, 'accounts.json');
@@ -243,7 +253,7 @@ class AccountsManager {
   /**
    * Returns the active account with fresh tokens, ready for launching.
    */
-  async getLaunchAccount() {
+  async getLaunchAccount(onWarn = () => {}) {
     const acc = this.getActiveAccount();
     if (!acc) return null;
 
@@ -259,10 +269,18 @@ class AccountsManager {
         if (!meta.refresh) {
           throw new Error(t('Сессия Microsoft истекла. Войдите в аккаунт заново.'));
         }
-        const msToken = await this.msAuth.refreshMicrosoftToken(meta.refresh);
-        const result = await this.msAuth.loginToMinecraft(msToken);
-        this.saveMicrosoftAccount(result);
-        return this.getActiveAccount();
+        try {
+          const msToken = await this.msAuth.refreshMicrosoftToken(meta.refresh);
+          const result = await this.msAuth.loginToMinecraft(msToken);
+          this.saveMicrosoftAccount(result);
+          return this.getActiveAccount();
+        } catch (e) {
+          // without internet the old token still starts the game: single player works,
+          // servers will ask to log in again. Online, a failed refresh means the session is really gone.
+          if (await isOnline()) throw e;
+          onWarn(t('Нет связи с серверами Microsoft — игра запустится со старым входом. Одиночная игра работает, на серверы зайти не получится.'));
+          return acc;
+        }
       }
     } else if (acc.type === 'elyby' && acc.accessToken) {
       const refreshed = await this.elyByManager.refreshIfNeeded(acc);

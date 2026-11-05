@@ -77,6 +77,18 @@ function diffOptions(source, target) {
   return counts;
 }
 
+/** Per category the changed values: { keybinds: [{ key, from, to }], … } (from is null when the target has none). */
+function detailOptions(source, target) {
+  const details = Object.fromEntries(CATEGORIES.map(c => [c.id, []]));
+  if (!source) return details;
+  for (const [key, value] of source) {
+    const cat = categoryOf(key);
+    const old = target ? target.get(key) : undefined;
+    if (cat && old !== value) details[cat].push({ key, from: old === undefined ? null : old, to: value });
+  }
+  return details;
+}
+
 function getMtime(dir) {
   try {
     return fs.statSync(optionsPath(dir)).mtimeMs;
@@ -134,6 +146,7 @@ module.exports = {
   DEFAULT_SYNC_MODES,
   readOptions,
   diffOptions,
+  detailOptions,
   findNewestSource,
   getMtime,
   applyOptions
