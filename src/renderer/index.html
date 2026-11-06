@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Covers the window until settings, builds and the account are loaded (also after Ctrl+R) -->
+  <div id="boot-screen" aria-hidden="true"><svg class="logo boot-logo"><use href="#i-logo"/></svg></div>
   <!-- Icon sprite -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <defs>
@@ -1135,6 +1137,7 @@
   <script src="themes.js"></script>
   <script src="log-view.js"></script>
   <script src="shot-editor.js"></script>
+  <script src="select-menu.js"></script>
   <script src="gamepad.js"></script>
   <script src="app.js"></script>
 </body>

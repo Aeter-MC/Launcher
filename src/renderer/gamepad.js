@@ -21,6 +21,7 @@
   const SCROLL_SPEED = 1400;   // px per second at full tilt
   const REPEAT_DELAY = 380;    // ms before a held direction repeats
   const REPEAT_EVERY = 110;
+  const SLIDER_FAST_AFTER = 10; // repeats of a held ← → before a slider takes bigger steps
 
   const FOCUSABLE = [
     'button', 'a[href]', 'input', 'select', 'textarea', '[tabindex]:not([tabindex="-1"])',
@@ -154,17 +155,7 @@
       let left = r.left - padX;
       let bottom = r.bottom + padY;
       let right = r.right + padX;
-      // a slider taken with A: the ring goes round the knob alone and moves with it
-      const knobOnly = isRange && editing === target;
-      if (knobOnly) {
-        const min = Number(box.min || 0);
-        const max = Number(box.max || 100);
-        const share = max > min ? (Number(box.value) - min) / (max - min) : 0;
-        const cx = r.left + SLIDER_KNOB / 2 + share * (r.width - SLIDER_KNOB);
-        const cy = r.top + r.height / 2;
-        const half = SLIDER_KNOB / 2 + RING_GAP + 1;
-        top = cy - half; bottom = cy + half; left = cx - half; right = cx + half;
-      }
+      // a slider taken with A keeps the same ring; only its knob turns the accent color (style.css)
       // scrolled partly out of its list: the ring stops at the list's edge
       for (let a = box.parentElement; a && a !== document.body; a = a.parentElement) {
         const cs = getComputedStyle(a);
@@ -349,7 +340,7 @@
     }
 
     /** ← → on a list or slider changes it. Returns true when it did. */
-    function adjust(dir) {
+    function adjust(dir, repeats = 0) {
       if (!target || (dir !== 'left' && dir !== 'right')) return false;
       const el = target;
       const step = dir === 'right' ? 1 : -1;
@@ -368,7 +359,8 @@
         const min = Number(el.min || 0);
         const max = Number(el.max || 100);
         const s = Number(el.step) > 0 ? Number(el.step) : 1;
-        const delta = Math.max(s, Math.round((max - min) / 40 / s) * s);
+        // a press moves one step; held long, a wide slider speeds up to 1/40 of its length
+        const delta = repeats >= SLIDER_FAST_AFTER ? Math.max(s, Math.round((max - min) / 40 / s) * s) : s;
         el.value = String(Math.min(max, Math.max(min, Number(el.value) + step * delta)));
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -377,9 +369,9 @@
       return false;
     }
 
-    function direction(dir) {
+    function direction(dir, repeats = 0) {
       if (editing && (dir === 'up' || dir === 'down')) setEditing(null);
-      if (!adjust(dir)) move(dir);
+      if (!adjust(dir, repeats)) move(dir);
     }
 
     // ---------- buttons ----------
@@ -538,11 +530,12 @@
 
       if (dir) {
         if (!held || held.dir !== dir) {
-          held = { dir, next: time + REPEAT_DELAY };
+          held = { dir, next: time + REPEAT_DELAY, repeats: 0 };
           direction(dir);
         } else if (time >= held.next) {
           held.next = time + REPEAT_EVERY;
-          direction(dir);
+          held.repeats = (held.repeats || 0) + 1;
+          direction(dir, held.repeats);
         }
       } else {
         held = null;

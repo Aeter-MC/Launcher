@@ -282,10 +282,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderTip();
   loadWeekStats();
   // Builds and versions first; accounts, Java and the rest fill in around them
-  loadAccounts();
+  const accountsLoaded = loadAccounts();
   loadSyncCategories();
   loadJavaList();
   await loadVersionsAndInstances();
+  // the account (avatar, name) usually comes quickly; don't hold the window for long if it doesn't
+  await Promise.race([accountsLoaded.catch(() => {}), new Promise(r => setTimeout(r, 1500))]);
+  hideBootScreen();
   await maybeRunSetup();
   startBackgroundUpdateChecks();
   setupDevTools();
@@ -294,6 +297,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ================= WINDOW =================
+// Boot screen: a short pause after loading so icons and images settle, then a fade.
+// If something fails during start, it still goes away after a few seconds.
+const BOOT_SETTLE_MS = 250;
+const bootFallback = setTimeout(() => hideBootScreen(), 8000);
+
+function hideBootScreen() {
+  clearTimeout(bootFallback);
+  const el = $('boot-screen');
+  if (!el || el.classList.contains('leaving')) return;
+  setTimeout(() => {
+    el.classList.add('leaving');
+    const remove = () => el.remove();
+    el.addEventListener('transitionend', remove, { once: true });
+    setTimeout(remove, 600);  // motion off: no transition fires
+  }, BOOT_SETTLE_MS);
+}
+
 function setupWindowControls() {
   $('btn-minimize').addEventListener('click', () => api.minimizeWindow());
   $('btn-maximize').addEventListener('click', () => api.maximizeWindow());
@@ -814,8 +834,8 @@ async function loadSettings() {
 
   const total = s.totalSystemRam || 8;
   $('system-ram-total').textContent = t('В системе {n} ГБ', { n: total });
-  $('slider-max-ram').max = Math.max(2, Math.min(total, 32));
-  $('slider-min-ram').max = Math.max(1, Math.min(total, 16));
+  $('slider-max-ram').max = ramSliderMax(total);
+  $('slider-min-ram').max = ramSliderMax(total);
   $('slider-max-ram').value = s.maxRam || 4;
   $('slider-min-ram').value = s.minRam || 2;
   updateRamLabels();
@@ -1464,10 +1484,15 @@ function onJavaProgress(p) {
   if (state.isLaunching) setProgress(p.total ? Math.round((p.received / p.total) * 100) : null, `Java ${p.major}: ${text.toLowerCase()}`);
 }
 
+/** The top of a memory slider: all of this computer's RAM but 2 GB left for Windows, at least 2 GB. */
+function ramSliderMax(totalGb) {
+  return Math.max(2, Math.round(totalGb) - 2);
+}
+
 function renderSetupMemory() {
   const total = state.settings.totalSystemRam || 8;
   const slider = $('setup-ram');
-  slider.max = Math.max(4, Math.min(total, 32));
+  slider.max = ramSliderMax(total);
   slider.value = state.settings.maxRam || Math.min(8, Math.max(2, Math.floor(total / 2)));
   $('setup-ram-value').textContent = t('{n} ГБ', { n: slider.value });
   $('setup-ram-text').textContent = t('Сколько оперативной памяти отдавать игре. В компьютере {n} ГБ.', { n: total });
@@ -1781,8 +1806,10 @@ function loaderLine(inst) {
   return `${loader}Minecraft ${inst.version}`;
 }
 
-function syncMark(inst) {
-  return inst.isPrism ? `<span class="sync-mark" title="${t('Синхронизируется с Prism Launcher')}">${icon('link')}</span>` : '';
+/** Build icon with a small "synced with Prism" badge on its corner. */
+function syncedIconHtml(inst) {
+  if (!inst.isPrism) return instanceIconHtml(inst);
+  return `<div class="sync-icon-wrap">${instanceIconHtml(inst)}<span class="sync-badge" title="${t('Синхронизируется с Prism Launcher')}">${icon('link')}</span></div>`;
 }
 
 /** The build's content page: mods, resource packs and shaders; a build without a loader has only resource packs. */
@@ -2011,8 +2038,8 @@ function openLaunchSettings(instanceId) {
     + (s.customJvmArgs ? ` · ${s.customJvmArgs}` : '');
   $('launch-window-inherit').textContent = s.fullscreen ? t('Сейчас на весь экран') : t('Сейчас {w}×{h}', { w: s.resolutionWidth || 1280, h: s.resolutionHeight || 720 });
 
-  $('launch-max-ram').max = Math.max(2, Math.min(total, 32));
-  $('launch-min-ram').max = Math.max(1, Math.min(total, 16));
+  $('launch-max-ram').max = ramSliderMax(total);
+  $('launch-min-ram').max = ramSliderMax(total);
   $('launch-own-ram').checked = own.maxRam != null || own.minRam != null;
   $('launch-max-ram').value = own.maxRam || s.maxRam || 4;
   $('launch-min-ram').value = own.minRam || s.minRam || 2;
@@ -2272,9 +2299,9 @@ function renderInstanceGrid() {
       el.className = `bcard ${selected}`;
       el.innerHTML = `
         <div class="bcard-top">
-          ${instanceIconHtml(inst)}
+          ${syncedIconHtml(inst)}
           <div class="bcard-text">
-            <div class="bcard-title" title="${esc(inst.name)}"><span class="grow" style="overflow:hidden;text-overflow:ellipsis">${esc(inst.name)}</span>${syncMark(inst)}</div>
+            <div class="bcard-title" title="${esc(inst.name)}">${esc(inst.name)}</div>
             <div class="bcard-sub">${esc(loaderLine(inst))}</div>
           </div>
         </div>
@@ -2287,16 +2314,18 @@ function renderInstanceGrid() {
     } else {
       el.className = `trow trow-click ${selected}`;
       el.innerHTML = `
-        ${instanceIconHtml(inst)}
+        ${syncedIconHtml(inst)}
         <div class="trow-main">
-          <div class="trow-title">${esc(inst.name)} ${syncMark(inst)}</div>
+          <div class="trow-title">${esc(inst.name)}</div>
           <div class="trow-sub">${esc(instanceMeta(inst))}</div>
         </div>
-        <div class="trow-aside">
-          <div>${lastPlayedShort(inst)}</div>
-          <div class="muted-2">${inst.totalPlaytime ? formatPlaytime(inst.totalPlaytime) : ''}</div>
+        <div class="trow-end">
+          <div class="trow-aside">
+            <div>${lastPlayedShort(inst)}</div>
+            <div class="muted-2">${inst.totalPlaytime ? formatPlaytime(inst.totalPlaytime) : ''}</div>
+          </div>
+          ${buildActionsHtml(inst)}
         </div>
-        ${buildActionsHtml(inst)}
         <button class="btn btn-secondary btn-sm btn-row-play" data-act="play">${icon('play', 'ic-xs')}${t('Играть')}</button>
       `;
     }

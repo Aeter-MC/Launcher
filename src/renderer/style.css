@@ -3,6 +3,17 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 
+#boot-screen {
+  position: fixed; inset: 0; z-index: 10000;
+  display: grid; place-items: center;
+  background: var(--color-bg);
+  -webkit-app-region: drag;
+  transition: opacity .3s ease;
+}
+#boot-screen.leaving { opacity: 0; pointer-events: none; }
+#boot-screen .boot-logo { width: 44px; height: 44px; color: var(--color-accent); animation: boot-pulse 1.4s ease-in-out infinite; }
+@keyframes boot-pulse { 50% { opacity: .45; transform: scale(.94); } }
+
 body {
   font-family: var(--font-family-text);
   font-size: var(--font-size-base);
@@ -198,7 +209,8 @@ h1, h2, h3 { font-weight: 600; }
   outline: none;
 }
 .input { width: 100%; }
-.input:focus, .select:focus { border-color: var(--color-accent); }
+.input:focus { border-color: var(--color-accent); }
+.select:focus, .select:focus-visible { outline: none; }
 .select {
   appearance: none;
   padding-right: 30px;
@@ -209,6 +221,60 @@ h1, h2, h3 { font-weight: 600; }
   background-size: 14px;
 }
 .select option, .select optgroup { background: var(--color-surface-2); color: var(--color-text); }
+
+/* Our popup for .select (select-menu.js) */
+.select-menu {
+  position: fixed; z-index: 160;
+  padding: 4px;
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-toast);
+  animation: select-menu-in .16s cubic-bezier(.2, .8, .3, 1);
+  transform-origin: top center;
+}
+.select-menu.up { transform-origin: bottom center; }
+@keyframes select-menu-in { from { opacity: 0; transform: scale(.96) translateY(-6px); } }
+.select-menu.up { animation-name: select-menu-in-up; }
+@keyframes select-menu-in-up { from { opacity: 0; transform: scale(.96) translateY(6px); } }
+.select-menu.closing { pointer-events: none; animation: select-menu-out .14s ease-in forwards; }
+.select-menu.up.closing { animation-name: select-menu-out-up; }
+@keyframes select-menu-out { to { opacity: 0; transform: scale(.97) translateY(-4px); } }
+@keyframes select-menu-out-up { to { opacity: 0; transform: scale(.97) translateY(4px); } }
+.select.select-open { background-image: none; }
+.select-arrow {
+  position: fixed; z-index: 161;
+  width: 14px; height: 14px;
+  color: #9a9ca3;
+  pointer-events: none;
+  transition: transform .18s cubic-bezier(.3, .7, .4, 1);
+}
+.select-arrow svg { display: block; width: 100%; height: 100%; }
+.select-arrow.flipped { transform: rotate(180deg); }
+.select-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 30px; padding: 0 12px 0 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: color .1s;
+}
+.select-menu-item:hover, .select-menu-item.active { color: var(--color-text); }
+.select-menu-item.active { background: var(--color-hover); }
+.select-menu-item.selected { color: var(--color-text); font-weight: 600; }
+.select-menu-item.disabled { opacity: .45; cursor: default; }
+.select-menu-check { width: 14px; height: 14px; flex-shrink: 0; color: var(--color-accent); visibility: hidden; }
+.select-menu-item.selected .select-menu-check { visibility: visible; }
+.select-menu-group {
+  padding: 8px 10px 4px 30px;
+  font-size: var(--font-size-xs); font-weight: 600;
+  color: var(--color-text-3);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.select-menu::-webkit-scrollbar { width: 10px; }
+.select-menu::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 10px; border: 3px solid var(--color-surface); }
 .input-num { width: 78px; text-align: center; }
 .input-num::-webkit-inner-spin-button { display: none; }
 
@@ -376,7 +442,7 @@ h1, h2, h3 { font-weight: 600; }
 .bcard-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .bcard-top .inst-icon { width: 48px; height: 48px; border-radius: 7px; }
 .bcard-text { min-width: 0; }
-.bcard-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.bcard-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bcard-sub { font-size: var(--font-size-sm); color: var(--color-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bcard-stats { display: flex; flex-wrap: wrap; font-size: var(--font-size-sm); color: var(--color-text-2); }
 .bcard-stats span + span::before { content: "·"; margin: 0 6px; color: var(--color-text-3); }
@@ -386,8 +452,19 @@ h1, h2, h3 { font-weight: 600; }
 .bcard:hover .bcard-more, .bcard-more.menu-anchor-open { color: var(--color-text); }
 .bcard-more.menu-anchor-open { background: var(--color-hover); }
 .bcard:hover .btn-row-play { background: var(--color-accent); color: var(--color-accent-ink); border-color: transparent; }
-.sync-mark { color: var(--color-text-3); display: inline-flex; flex-shrink: 0; }
-.sync-mark .ic { width: 13px; height: 13px; }
+/* "Synced with Prism" badge on the corner of a build icon */
+.sync-icon-wrap { position: relative; flex-shrink: 0; display: flex; }
+.sync-badge {
+  position: absolute; right: -4px; bottom: -4px;
+  display: grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--color-surface-2); color: var(--color-text-2);
+  border: 2px solid var(--color-surface);
+}
+.sync-badge .ic { width: 10px; height: 10px; }
+
+.bcard:hover .sync-badge, .bcard.selected .sync-badge, .trow:hover .sync-badge, .trow.selected .sync-badge { border-color: var(--color-surface-2); background: var(--color-surface); }
+
 /* Dropdown menu */
 .menu {
   position: fixed; z-index: 150;
@@ -607,9 +684,36 @@ h1, h2, h3 { font-weight: 600; }
 .trow-status { display: flex; justify-content: flex-end; min-width: 0; flex-shrink: 0; }
 .off-label { font-weight: 400; font-size: var(--font-size-xs); color: var(--color-text-3); margin-left: 8px; }
 
-.row-actions { display: flex; gap: 1px; opacity: 0; transition: opacity .1s; }
-.trow:hover .row-actions, .row-actions:focus-within { opacity: 1; }
-.btn-row-play .ic { width: 11px; height: 11px; }
+/* Row actions take the place of the date column on hover, so they reserve no space when hidden */
+.trow-end { position: relative; display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
+.trow-aside { transition: opacity .15s ease, transform .18s ease; }
+.row-actions {
+  position: absolute; right: 0; top: 50%;
+  display: flex; gap: 1px; padding-left: 24px;
+  /* fades into the row so a long build name slides under it softly */
+  background: linear-gradient(to right, transparent, var(--color-surface-2) 24px);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translate(8px, -50%);
+  transition: opacity .16s ease, transform .2s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .2s;
+}
+.row-actions .icon-btn { opacity: 0; transform: translateX(6px); transition: opacity .16s ease, transform .2s cubic-bezier(.2, .8, .2, 1), background-color .12s, color .12s; }
+.trow:hover .row-actions, .trow:has(:focus-visible) .row-actions {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: translate(0, -50%);
+  transition: opacity .16s ease, transform .2s cubic-bezier(.2, .8, .2, 1), visibility 0s;
+}
+.trow:hover .row-actions .icon-btn, .trow:has(:focus-visible) .row-actions .icon-btn { opacity: 1; transform: none; }
+/* small stagger: buttons arrive one after another from the right */
+.trow:hover .row-actions .icon-btn:nth-last-child(2), .trow:has(:focus-visible) .row-actions .icon-btn:nth-last-child(2) { transition-delay: .02s; }
+.trow:hover .row-actions .icon-btn:nth-last-child(3), .trow:has(:focus-visible) .row-actions .icon-btn:nth-last-child(3) { transition-delay: .04s; }
+.trow:hover .row-actions .icon-btn:nth-last-child(4), .trow:has(:focus-visible) .row-actions .icon-btn:nth-last-child(4) { transition-delay: .06s; }
+.trow:hover .row-actions .icon-btn:nth-last-child(5), .trow:has(:focus-visible) .row-actions .icon-btn:nth-last-child(5) { transition-delay: .08s; }
+.trow:hover .row-actions .icon-btn:nth-last-child(6), .trow:has(:focus-visible) .row-actions .icon-btn:nth-last-child(6) { transition-delay: .10s; }
+.trow:hover .row-actions .icon-btn:nth-last-child(7), .trow:has(:focus-visible) .row-actions .icon-btn:nth-last-child(7) { transition-delay: .12s; }
+.trow:hover .trow-end .trow-aside, .trow:has(:focus-visible) .trow-end .trow-aside { opacity: 0; transform: translateX(-6px); }
+.trow .row-actions .icon-btn:active { transform: scale(.94); transition-delay: 0s; }
+.btn-row-play .ic { width: 11px; height: 11px; transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
+.trow:hover .btn-row-play .ic, .bcard:hover .btn-row-play .ic { transform: translateX(1px) scale(1.15); }
 .trow:hover .btn-row-play { background: var(--color-accent); color: var(--color-accent-ink); border-color: transparent; }
 
 .icon-play { position: relative; flex-shrink: 0; border-radius: var(--radius-icon); }
@@ -1225,13 +1329,10 @@ body.gp-mode { cursor: none; }
     height .14s cubic-bezier(.2, .8, .2, 1), border-radius .14s;
 }
 .gp-ring.gp-ring-jump { transition: none; }
-/* a slider taken with A: a filled ring, ← → change it */
-/* a slider taken with A: the ring sits round the knob alone (gamepad.js places it) */
-.gp-ring.gp-ring-edit {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
-  transition: transform .08s linear;
-}
-.range.gp-editing::-webkit-slider-thumb { background: var(--color-accent); }
+/* a slider taken with A: the ring stays put without a halo, the knob turns the accent color, ← → change it */
+.gp-ring.gp-ring-edit { box-shadow: none; }
+.range.gp-editing::-webkit-slider-thumb { background: var(--color-accent); box-shadow: none; }
+body.gp-mode .range::-webkit-slider-thumb { box-shadow: none; }
 .no-motion .gp-ring { transition: none; }
 /* menu items sit edge to edge: a tint shows which one, under the ring */
 body.gp-mode .menu .gp-focus { background: var(--color-hover); }

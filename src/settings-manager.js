@@ -21,7 +21,7 @@ function getSettingsPath(appDataDir) {
 }
 
 function getDefaultSettings() {
-  const totalMemGb = Math.max(4, Math.floor(os.totalmem() / (1024 * 1024 * 1024)));
+  const totalMemGb = Math.max(4, Math.round(os.totalmem() / (1024 * 1024 * 1024)));
   // Recommended allocation: half of total RAM or up to 6 GB
   const defaultRam = Math.min(6, Math.max(2, Math.floor(totalMemGb / 2)));
 
