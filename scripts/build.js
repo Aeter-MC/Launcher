@@ -73,6 +73,14 @@ async function build(config, portableTemplate) {
           const internal = path.join('src', 'native-v2-runtime', name);
           const expected = fs.readFileSync(path.join(root, 'native', 'v2', 'bin', name));
           const actual = asar.extractFile(archive, internal);
+const staged = fs.readFileSync(
+  path.join(root, 'src', 'native-v2-runtime', name)
+);
+
+console.log(`[Native V2] ${name}`);
+console.log(`SOURCE:   ${sha256(expected)}`);
+console.log(`STAGED:   ${sha256(staged)}`);
+console.log(`PACKAGED: ${sha256(actual)}`);
           if (!actual.equals(expected)) {
   throw new Error(
     `Packaged Native V2 runtime differs: ${name}\n` +
