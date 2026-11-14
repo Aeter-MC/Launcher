@@ -114,6 +114,13 @@ console.log(`PACKAGED: ${sha256(actual)}`);
     artifactName: 'AeterMC-Setup-${version}.${ext}'
   }
 }, template);
+const version = require('../package.json').version;
+const setupName = `AeterMC-Setup-${version}.exe`;
+
+fs.copyFileSync(
+  path.join(root, 'dist', 'setup', setupName),
+  path.join(root, 'dist', setupName)
+);
   // the installer also goes to the root of the workspace (next to mcl/), where it is uploaded from
   if (copyToWorkspace) {
     const name = `AeterMC-Setup-${require('../package.json').version}.exe`;
