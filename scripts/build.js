@@ -104,9 +104,16 @@ console.log(`PACKAGED: ${sha256(actual)}`);
   const template = fs.readFileSync(path.join(INSTALLER, 'splash', 'portable-setup.nsi'), 'utf8')
     .replace('@AETER_SPLASH@', SPLASH);
   await build({
-    extraMetadata: { aeterSetup: true },
-    portable: { artifactName: 'AeterMC-Setup-${version}.${ext}' }
-  }, template);
+  directories: {
+    output: 'dist/setup'
+  },
+  extraMetadata: {
+    aeterSetup: true
+  },
+  portable: {
+    artifactName: 'AeterMC-Setup-${version}.${ext}'
+  }
+}, template);
   // the installer also goes to the root of the workspace (next to mcl/), where it is uploaded from
   if (copyToWorkspace) {
     const name = `AeterMC-Setup-${require('../package.json').version}.exe`;
