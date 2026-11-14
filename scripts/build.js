@@ -16,6 +16,28 @@ const fs = require('fs');
 const path = require('path');
 const builder = require('electron-builder');
 const asar = require('@electron/asar');
+const crypto = require('crypto');
+
+function sha256(data) {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+function syncNativeRuntime() {
+  const sourceDir = path.join(root, 'native', 'v2', 'bin');
+  const targetDir = path.join(root, 'src', 'native-v2-runtime');
+
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  for (const name of ['AeterNative.exe', 'aeter-bootstrap.jar']) {
+    const source = path.join(sourceDir, name);
+    const target = path.join(targetDir, name);
+
+    const data = fs.readFileSync(source);
+    fs.writeFileSync(target, data);
+
+    console.log(`[Native V2] ${name}: ${sha256(data)}`);
+  }
+}
 const { Platform, Arch } = builder;
 
 const root = path.join(__dirname, '..');
@@ -40,6 +62,8 @@ async function build(config, portableTemplate) {
     };
   }
   try {
+    syncNativeRuntime();
+
     // releases are published by .github/workflows/release.yml, never by electron-builder itself
     await builder.build({ targets: Platform.WINDOWS.createTarget(['portable'], Arch.x64), config: {
       ...config,
@@ -49,7 +73,13 @@ async function build(config, portableTemplate) {
           const internal = path.join('src', 'native-v2-runtime', name);
           const expected = fs.readFileSync(path.join(root, 'native', 'v2', 'bin', name));
           const actual = asar.extractFile(archive, internal);
-          if (!actual.equals(expected)) throw new Error(`Packaged Native V2 runtime differs from the build: ${name}`);
+          if (!actual.equals(expected)) {
+  throw new Error(
+    `Packaged Native V2 runtime differs: ${name}\n` +
+    `Expected: ${sha256(expected)}\n` +
+    `Actual:   ${sha256(actual)}`
+  );
+}
         }
         console.log('Verified Native V2 runtime in app.asar');
       }
