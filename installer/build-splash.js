@@ -1,5 +1,5 @@
 /**
- * build-splash.js — `npm run splash` (also runs before `npm run build`)
+ * build-splash.js — `npm run splash` in mcl/ (also runs before `npm run build`)
  * Builds installer/build/splash.exe: the animated window AeterMC-Setup.exe shows while it unpacks the app
  * (a few seconds before the installer window appears). Source: splash/Splash.cs, filled in
  * with the default theme's colors (src/themes.json) and the logo from assets/logo.svg, compiled by the C# compiler

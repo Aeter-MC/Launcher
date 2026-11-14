@@ -1,9 +1,10 @@
 {
   "name": "aetermc",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "AeterMC — Minecraft launcher",
   "main": "src/main.js",
   "scripts": {
+    "native:v2": "node scripts/build-native-v2.js",
     "start": "electron .",
     "tokens": "node scripts/build-tokens.js",
     "tokens:watch": "node scripts/build-tokens.js --watch",
@@ -63,5 +64,8 @@
     "portable": {
       "artifactName": "AeterMC-${version}-portable.${ext}"
     }
+  },
+  "allowScripts": {
+    "electron@28.3.3": true
   }
 }

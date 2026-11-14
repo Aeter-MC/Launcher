@@ -11,31 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 const { t } = require('./i18n/i18n');
-const { collectFiles, writePrismLaunch } = require('./instances-manager');
-
-// Prism component ids of the loaders, with the display names Prism caches
-const LOADER_COMPONENTS = {
-  fabric: { uid: 'net.fabricmc.fabric-loader', name: 'Fabric Loader', intermediary: true },
-  quilt: { uid: 'org.quiltmc.quilt-loader', name: 'Quilt Loader', intermediary: true },
-  forge: { uid: 'net.minecraftforge', name: 'Forge' },
-  neoforge: { uid: 'net.neoforged', name: 'NeoForge' }
-};
-
-function mmcPack(inst) {
-  const components = [
-    { cachedName: 'Minecraft', cachedVersion: inst.version, important: true, uid: 'net.minecraft', version: inst.version }
-  ];
-  const loader = LOADER_COMPONENTS[inst.loader];
-  if (loader) {
-    if (!inst.loaderVersion) throw new Error(t('У сборки не указана версия загрузчика'));
-    // Fabric and Quilt map names through Intermediary; Prism would add it too, but only after a refresh
-    if (loader.intermediary) {
-      components.push({ cachedName: 'Intermediary Mappings', cachedVersion: inst.version, dependencyOnly: true, uid: 'net.fabricmc.intermediary', version: inst.version });
-    }
-    components.push({ cachedName: loader.name, cachedVersion: inst.loaderVersion, uid: loader.uid, version: inst.loaderVersion });
-  }
-  return { components, formatVersion: 1 };
-}
+const { collectFiles, writePrismLaunch, mmcPack } = require('./instances-manager');
 
 /** Icon of the build as PNG bytes, or null (block icons are AeterMC's own and have no file). */
 function iconPng(inst) {
@@ -56,6 +32,7 @@ function instanceCfg(inst, iconKey) {
  * Returns { file, packed }.
  */
 async function exportPrism(inst, { include = [], allowed, file }, onProgress = () => {}) {
+  if (inst.loader !== 'vanilla' && !inst.loaderVersion) throw new Error(t('У сборки не указана версия загрузчика'));
   const root = inst.minecraftDir;
   const files = [];
   for (const entry of include) {

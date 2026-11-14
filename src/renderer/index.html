@@ -90,7 +90,7 @@
         <button class="nav-item active" data-tab="home" title="Главная"><svg class="ic"><use href="#i-home"/></svg><span>Главная</span></button>
         <button class="nav-item" data-tab="instances" title="Сборки"><svg class="ic"><use href="#i-box"/></svg><span>Сборки</span></button>
         <button class="nav-item" data-tab="screenshots" title="Скриншоты"><svg class="ic"><use href="#i-image"/></svg><span>Скриншоты</span></button>
-        <button class="nav-item" data-tab="logs" title="Консоль"><svg class="ic"><use href="#i-terminal"/></svg><span>Консоль</span><span class="nav-dot" id="log-indicator"></span></button>
+        <button class="nav-item hidden" data-tab="logs" title="Консоль"><svg class="ic"><use href="#i-terminal"/></svg><span>Консоль</span><span class="nav-dot" id="log-indicator"></span></button>
         <button class="nav-item" data-tab="settings" title="Настройки"><svg class="ic"><use href="#i-settings"/></svg><span>Настройки</span></button>
       </nav>
 
@@ -98,7 +98,10 @@
         <button class="account-chip" id="btn-open-accounts">
           <img class="account-chip-avatar" id="account-avatar" alt="">
           <span class="account-chip-text">
-            <span class="account-chip-name" id="account-name">Steve</span>
+            <span class="account-chip-identity">
+              <span class="account-chip-name" id="account-name">Steve</span>
+              <span class="account-session-expired hidden" id="account-session-expired">Сессия истекла</span>
+            </span>
             <span class="account-chip-type" id="account-type">Оффлайн</span>
           </span>
           <svg class="ic ic-sm"><use href="#i-chevron"/></svg>
@@ -127,7 +130,7 @@
                     <h2 class="hero-title" id="hero-title">—</h2>
                     <div class="hero-meta" id="hero-meta"></div>
                   </div>
-                  <button class="btn-play" id="btn-launch">
+                  <button class="btn-play" id="btn-launch" disabled>
                     <svg class="ic"><use id="btn-launch-icon" href="#i-play"/></svg>
                     <span id="btn-launch-text">Играть</span>
                   </button>
@@ -192,11 +195,39 @@
               <button data-builds-view="grid" title="Сеткой"><svg class="ic ic-sm"><use href="#i-grid"/></svg></button>
               <button data-builds-view="list" title="Списком"><svg class="ic ic-sm"><use href="#i-list"/></svg></button>
             </div>
-            <button class="btn btn-secondary" id="btn-import-instance" aria-haspopup="menu"><svg class="ic ic-sm"><use href="#i-download"/></svg>Импорт</button>
-            <button class="btn btn-primary" id="btn-new-instance"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Новая сборка</button>
+            <button class="btn btn-primary" id="btn-new-instance" data-new-instance aria-haspopup="menu"><svg class="ic ic-sm"><use href="#i-plus"/></svg>Новая сборка</button>
           </div>
         </div>
         <div class="table" id="instance-grid"></div>
+      </section>
+
+      <section class="page" id="page-modrinth-packs">
+        <div class="page-head">
+          <div class="mods-head">
+            <button class="icon-btn" id="modrinth-pack-back" title="К сборкам"><svg class="ic ic-flip"><use href="#i-chevron"/></svg></button>
+            <h1>Модпаки Modrinth</h1>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="search grow">
+            <svg class="ic ic-sm"><use href="#i-search"/></svg>
+            <input type="search" id="modrinth-pack-query" placeholder="Поиск модпаков на Modrinth" maxlength="120">
+          </div>
+          <div class="toolbar-right">
+            <select id="modrinth-pack-category" class="select" aria-label="Все категории"></select>
+            <select id="modrinth-pack-sort" class="select">
+              <option value="relevance">По релевантности</option>
+              <option value="downloads">По загрузкам</option>
+              <option value="follows">По подпискам</option>
+              <option value="updated">Недавно обновлённые</option>
+            </select>
+          </div>
+        </div>
+        <div class="table" id="modrinth-pack-results"></div>
+        <div class="toolbar modrinth-pack-pages hidden" id="modrinth-pack-pages">
+          <button class="btn btn-secondary btn-sm" id="modrinth-pack-prev">Назад</button>
+          <button class="btn btn-secondary btn-sm" id="modrinth-pack-next">Далее</button>
+        </div>
       </section>
 
       <!-- ============ BUILD MODS ============ -->
@@ -337,7 +368,7 @@
                 <input type="number" id="input-res-h" class="input input-num" min="240" title="Высота">
               </div>
             </div>
-            <label class="setting">
+            <label class="setting" id="update-auto-setting">
               <div class="setting-text"><div class="setting-label">Полноэкранный режим</div></div>
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-fullscreen"><span></span></span></div>
             </label>
@@ -425,6 +456,13 @@
             <label class="setting">
               <div class="setting-text"><div class="setting-label">Анимации</div></div>
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-animations"><span></span></span></div>
+            </label>
+            <label class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Системный заголовок окна</div>
+                <div class="setting-hint">Применится после перезапуска лаунчера</div>
+              </div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-native-titlebar"><span></span></span></div>
             </label>
             <label class="setting">
               <div class="setting-text"><div class="setting-label">Вкладка «Консоль»</div></div>
@@ -937,10 +975,47 @@
   </div>
 
   <!-- ============ MODAL: MODPACK IMPORT ============ -->
+  <div class="modal hidden" id="modal-modrinth-preview" role="dialog" aria-modal="true" aria-labelledby="modrinth-preview-title">
+    <div class="modal-box modrinth-preview-box">
+      <div class="modal-head">
+        <div class="modrinth-preview-heading">
+          <div class="mod-icon mod-icon-lg" id="modrinth-preview-icon"></div>
+          <div><h3 id="modrinth-preview-title"></h3><p class="muted small" id="modrinth-preview-meta"></p></div>
+        </div>
+        <button class="icon-btn" id="modrinth-preview-close" aria-label="Закрыть"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p id="modrinth-preview-description"></p>
+        <div id="modrinth-preview-gallery" class="modrinth-preview-gallery hidden">
+          <img id="modrinth-preview-image" alt="">
+          <div class="modrinth-preview-nav">
+            <button class="btn btn-secondary btn-sm" id="modrinth-preview-prev">Назад</button>
+            <span class="muted small" id="modrinth-preview-caption"></span>
+            <button class="btn btn-secondary btn-sm" id="modrinth-preview-next">Далее</button>
+          </div>
+        </div>
+        <div id="modrinth-preview-gallery-status" class="hint" aria-live="polite"></div>
+        <div id="modrinth-preview-pack" class="hidden">
+          <label class="field-label spaced" for="modrinth-pack-version">Версия модпака</label>
+          <select class="select" id="modrinth-pack-version"></select>
+          <div class="prism-progress hidden" id="modrinth-pack-progress">
+            <div class="progress-labels"><span id="modrinth-pack-progress-text"></span><span id="modrinth-pack-progress-percent"></span></div>
+            <div class="progress-track"><div class="progress-fill" id="modrinth-pack-progress-fill"></div></div>
+          </div>
+          <div class="form-status" id="modrinth-pack-status" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <a class="btn btn-secondary" id="modrinth-preview-link" target="_blank" rel="noopener">Открыть на Modrinth</a>
+        <button class="btn btn-primary hidden" id="modrinth-pack-install" disabled>Установить</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal hidden" id="modal-mrpack-import">
     <div class="modal-box modal-md">
       <div class="modal-head">
-        <h3>Импорт модпака</h3>
+        <h3 id="mrpack-import-heading">Импорт модпака</h3>
         <button class="icon-btn" id="mrpack-import-close"><svg class="ic"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">

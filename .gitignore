@@ -33,3 +33,13 @@ preview/
 # Developer tools (crash samples, the "Для разработчика" block in settings): local only
 src/renderer/dev-tools.js
 src/dev-samples.js
+
+# Native V2 build output
+/native/bin/
+/native/v2/bin/
+/native/v2/build/
+/native/v2/test-bin/
+/src/native-v2-runtime/
+/.test-state/
+/.test-data/
+/.test-output/

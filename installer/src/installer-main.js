@@ -329,7 +329,7 @@ function cleanEnv() {
 
 /**
  * installer.html takes the launcher's styles (tokens.css, style.css, theme-init.js), but the two
- * live in different folders in the repo (installer/src/, src/) and in one app.asar when packaged.
+ * live in different folders in the repo (installer/src and src) and in one app.asar when packaged.
  * So the page is written to the installer's temp folder with absolute links to both.
  */
 function pageWithLauncherStyles() {

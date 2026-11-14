@@ -5,6 +5,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  platform: process.platform,
+  isAppImage: process.platform === 'linux' && !!process.env.APPIMAGE,
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
@@ -22,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Instances
   listInstances: () => ipcRenderer.invoke('list-instances'),
+  createInstanceShortcut: (id, iconDataUrl) => ipcRenderer.invoke('create-instance-shortcut', id, iconDataUrl),
   countPrismInstances: () => ipcRenderer.invoke('prism-instances-count'),
   listPrismInstances: () => ipcRenderer.invoke('prism-list'),
   importPrismInstances: (keys) => ipcRenderer.invoke('prism-import', keys),
@@ -56,6 +59,16 @@ contextBridge.exposeInMainWorld('api', {
   openInstanceFolder: (id) => ipcRenderer.invoke('open-instance-folder', id),
 
   // Modrinth modpacks (.mrpack)
+  getModrinthProjectPreview: (id) => ipcRenderer.invoke('modrinth-project-preview', id),
+  getModrinthPackVersions: (projectId) => ipcRenderer.invoke('modrinth-pack-versions', projectId),
+  installModrinthPack: (projectId, versionId) => ipcRenderer.invoke('modrinth-pack-install', projectId, versionId),
+  onModrinthPackProgress: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('modrinth-pack-progress', handler);
+    return () => ipcRenderer.removeListener('modrinth-pack-progress', handler);
+  },
+  inspectInstanceZip: (file) => ipcRenderer.invoke('instance-zip-inspect', file),
+  importInstanceZip: (file, name) => ipcRenderer.invoke('instance-zip-import', file, name),
   inspectMrpack: (file) => ipcRenderer.invoke('mrpack-inspect', file),
   importMrpack: (file, name) => ipcRenderer.invoke('mrpack-import', file, name),
   listMrpackExportEntries: (id) => ipcRenderer.invoke('mrpack-export-entries', id),

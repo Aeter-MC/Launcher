@@ -1,5 +1,6 @@
 # Builds the launcher on every push to main and every pull request (by hand: Actions → Build → Run workflow).
-# The setup, the portable exe and app.asar end up in the run's artifacts. The exes are named
+# Windows binaries, Linux .deb and .AppImage, Arch .pkg.tar.zst and the AUR archive are saved as artifacts.
+# A release is published only after every package has built successfully. The exes are named
 # AeterMC-Setup.exe and AeterMC-portable.exe in every release (scripts/release-files.js), so the site's
 # links to releases/latest/download/<name> keep working after each new version.
 # On main, a version in package.json that has no release yet is also published: the release
@@ -27,6 +28,9 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
     defaults:
       run:
         shell: bash
@@ -42,6 +46,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
 
       - name: Version
         id: version
@@ -67,7 +76,8 @@ jobs:
           echo "::notice::Будет опубликован релиз v$VERSION"
 
       - run: npm ci
-      - run: npm run build
+      - name: Build Windows installer and portable with Native V2
+        run: npm run build -- --no-workspace-copy
 
       - name: Collect files
         run: node scripts/release-files.js
@@ -77,10 +87,87 @@ jobs:
           name: AeterMC-${{ steps.version.outputs.version }}-${{ github.sha }}
           path: release/
 
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check translations and available tests
+        run: |
+          if [[ -f test/installation.test.js ]]; then node --test test/installation.test.js; fi
+          npm run i18n
+      - name: Build Debian package, AppImage and Arch application archive
+        run: |
+          node scripts/build-deb.js
+          node scripts/build-deb.js --appimage
+          bash scripts/build-linux.sh
+          node scripts/prepare-arch.js
+      - name: Inspect Debian package
+        run: dpkg-deb --info dist/*.deb
+      - name: Verify AppImage exists
+        run: test -s dist/*.AppImage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AeterMC-linux-${{ github.sha }}
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+            dist/AeterMC-*-linux.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arch-sources-${{ github.sha }}
+          path: dist/arch/
+          if-no-files-found: error
+
+  arch:
+    needs: linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: arch-sources-${{ github.sha }}
+          path: arch/
+      - name: Build Arch Linux package
+        run: |
+          docker run --rm -v "$PWD/arch:/build" archlinux:base-devel bash -euc '
+            useradd --create-home builder
+            chown -R builder:builder /build
+            cd /build
+            # Only copies prebuilt app assets; Electron is a runtime dependency.
+            runuser -u builder -- env PKGEXT=.pkg.tar.zst makepkg --nodeps --noconfirm
+          '
+      - name: Inspect Arch Linux package
+        run: tar --zstd -xOf arch/*.pkg.tar.zst .PKGINFO
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AeterMC-arch-${{ github.sha }}
+          path: arch/*.pkg.tar.zst
+          if-no-files-found: error
+
+  release:
+    needs: [build, linux, arch]
+    if: needs.build.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: AeterMC-*
+          merge-multiple: true
+          path: release/
+
       - name: Release notes
-        if: steps.version.outputs.release == 'true'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           # commit subjects since the previous release (for a stable one: the previous stable one),
           # without the version bump commits; shown in the launcher's update menu (in English, like the commits)
@@ -97,9 +184,8 @@ jobs:
           cat notes.md
 
       - name: Publish release
-        if: steps.version.outputs.release == 'true'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           flags=()
           [[ "$VERSION" == *-* ]] && flags+=(--prerelease)

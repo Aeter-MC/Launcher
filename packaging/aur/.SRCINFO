@@ -1,0 +1,20 @@
+pkgbase = aetermc-bin
+	pkgdesc = AeterMC launcher for Minecraft: Java Edition
+	pkgver = 0.4.1
+	pkgrel = 1
+	url = https://github.com/Aeter-MC/Launcher
+	arch = x86_64
+	license = MIT
+	depends = electron44
+	depends = tar
+	provides = aetermc
+	conflicts = aetermc
+	options = !strip
+	source = https://github.com/Aeter-MC/Launcher/releases/download/v0.4.1/AeterMC-0.4.1-linux.tar.gz
+	source = aetermc
+	source = aetermc.desktop
+	sha256sums = feb6cbb1a6004cc05e1b773f3927be5879d26fd438a194369ec1a2b2953f86a5
+	sha256sums = b46f0c83861ecfe02191bf9b71875d443c0665ca406ea1bd7837cc04b2d0c57e
+	sha256sums = b71adb0409604a344426155923b9d46d583f78f42c7663fdff4370071c0916b7
+
+pkgname = aetermc-bin

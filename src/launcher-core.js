@@ -7,6 +7,32 @@ const path = require('path');
 const { xuidFromToken } = require('./microsoft-auth');
 const { t } = require('./i18n/i18n');
 const { gcArgs } = require('./jvm-flags');
+const { execFile } = require('child_process');
+
+// Quotes group whitespace; backslashes are literal except before a quote. No shell.
+function parseJvmArgs(value) {
+  const result = [];
+  let current = '', quote = '', started = false;
+  const text = String(value || '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\0') throw new Error('JVM arguments contain a NUL character');
+    if (c === '\\' && (text[i + 1] === '"' || text[i + 1] === "'")) { current += text[++i]; started = true; }
+    else if (quote) { if (c === quote) quote = ''; else current += c; }
+    else if (c === '"' || c === "'") { quote = c; started = true; }
+    else if (/\s/.test(c)) { if (started) { result.push(current); current = ''; started = false; } }
+    else { current += c; started = true; }
+  }
+  if (quote) throw new Error('Unclosed quote in JVM arguments');
+  if (started) result.push(current);
+  return result;
+}
+
+function secureJavaCheck(java) {
+  return new Promise(resolve => execFile(java, ['-version'], { timeout: 15000, windowsHide: true, maxBuffer: 65536 }, error => {
+    resolve(error ? { run: false, message: 'Java could not start; verify the selected executable' } : { run: true });
+  }));
+}
 
 // MCLC passes the access token as --xuid when meta.xuid is empty, so accounts without an Xbox id get this instead
 const NO_XUID = '0';
@@ -14,7 +40,12 @@ const NO_XUID = '0';
 // minecraft-launcher-core takes ~200 ms to load, so it is loaded on the first launch only
 let mclc = null;
 function launcherLib() {
-  if (!mclc) mclc = require('minecraft-launcher-core');
+  if (!mclc) {
+    mclc = require('minecraft-launcher-core');
+    // The pinned dependency uses child.exec for this one probe. Replace the
+    // adapter method before Client.launch constructs its Handler.
+    require('minecraft-launcher-core/components/handler').prototype.checkJava = secureJavaCheck;
+  }
   return mclc;
 }
 
@@ -108,7 +139,8 @@ class LauncherCore {
       resolutionWidth = 1280,
       resolutionHeight = 720,
       fullscreen = false,
-      elyByManager
+      elyByManager,
+      prepareOnly = false
     } = options;
 
     const { onProgress, onLog, onLaunched, onClose } = callbacks;
@@ -147,7 +179,7 @@ class LauncherCore {
       const max = Math.max(1, Number(maxRam) || 4);
       const min = Math.min(max, Math.max(1, Number(minRam) || 1));
 
-      const ownArgs = String(customJvmArgs || '').split(/\s+/).filter(Boolean);
+      const ownArgs = parseJvmArgs(customJvmArgs);
       const gc = gcArgs({ preset: jvmPreset, javaMajor, maxRamGb: max, customArgs: ownArgs });
       if (gc.gc) log('info', `[JVM]: ${t('Сборщик мусора {gc}, флаги подобраны под {ram} ГБ', { gc: gc.gc, ram: max })}`);
       if (gc.note === 'own-gc') log('info', `[JVM]: ${t('Сборщик мусора задан в своих аргументах — готовые флаги не добавлены')}`);
@@ -194,8 +226,21 @@ class LauncherCore {
       this.client = new (launcherLib().Client)();
       this.launchStartTime = Date.now();
 
+      // Prepare the same command and files, but let the native runner start Java.
+      let prepared = null;
+      if (prepareOnly) {
+        this.client.startMinecraft = args => {
+          // MCLC includes numeric window dimensions. child_process.spawn normally
+          // coerces those to strings; our native handoff must do the same.
+          prepared = { java: mclOptions.javaPath || 'java', cwd: mclOptions.overrides.cwd, args: args.map(String) };
+          return prepared;
+        };
+      }
+
       let lastDebug = '';
       this.client.on('debug', (msg) => {
+        // MCLC's argument dump contains the access token.
+        if (String(msg).includes('Launching with arguments')) return;
         lastDebug = String(msg);
         log('debug', lastDebug);
       });
@@ -206,7 +251,8 @@ class LauncherCore {
       });
 
       this.client.on('download-status', (status) => {
-        if (!onProgress || !status) return;
+        // Asset byte events are per file. The progress event counts the entire index.
+        if (!onProgress || !status || status.type === 'assets') return;
         const total = status.total || 0;
         const current = status.current || 0;
         onProgress({
@@ -231,13 +277,17 @@ class LauncherCore {
         });
       });
 
-      this.client.on('close', (code) => {
+      let gameFinished = false;
+      const finishGame = (code) => {
+        if (!this.isRunning || gameFinished) return;
+        gameFinished = true;
         const durationSeconds = Math.round((Date.now() - this.launchStartTime) / 1000);
         this.isRunning = false;
         this.gameProcess = null;
         log('info', t('Процесс игры завершен (Код: {code}, Время игры: {m}м {s}с)', { code, m: Math.floor(durationSeconds / 60), s: durationSeconds % 60 }));
         onClose && onClose(code, durationSeconds);
-      });
+      };
+      this.client.on('close', finishGame);
 
       // MCLC does not throw on failure: it emits a debug message and resolves with null.
       const processHandle = await this.client.launch(mclOptions);
@@ -246,8 +296,14 @@ class LauncherCore {
         throw new Error(reason);
       }
 
+      if (prepareOnly) return { ...prepared, authorization: authObj };
+
       this.gameProcess = processHandle;
       this.isRunning = true;
+      // MCLC reports close only after stdio closes. A descendant can keep
+      // those pipes open after Java exits, leaving the launch lock held.
+      processHandle.once?.('exit', (code, signal) => finishGame(code ?? (signal ? 1 : null)));
+      processHandle.once?.('error', () => finishGame(1));
       log('info', t('Minecraft успешно запущен!'));
       onLaunched && onLaunched();
       return processHandle;
@@ -273,5 +329,5 @@ class LauncherCore {
 }
 
 module.exports = {
-  LauncherCore
+  LauncherCore, parseJvmArgs, secureJavaCheck
 };

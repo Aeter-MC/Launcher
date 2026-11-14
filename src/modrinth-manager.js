@@ -60,7 +60,8 @@ class ModrinthManager {
   async searchMods(options = {}) {
     const { query = '', gameVersion = '', loader = '', category = '', limit = 20, offset = 0, sortBy = 'relevance', kind = 'mod' } = options;
 
-    const facets = [[`project_type:${contentType(kind).projectType}`]];
+    const projectType = kind === 'modpack' ? 'modpack' : contentType(kind).projectType;
+    const facets = [[`project_type:${projectType}`]];
     if (gameVersion) facets.push([`versions:${gameVersion}`]);
     const loaders = loaderList(loader, kind);
     if (loaders.length) facets.push(loaders.map(l => `categories:${l}`));
@@ -96,6 +97,36 @@ class ModrinthManager {
     });
     // The API filter is loose about loaders on multi-loader versions, so check again
     return (response.data || []).filter(v => isCompatible(v, gameVersion, loader, kind));
+  }
+
+  async getProjectPreview(projectId) {
+    if (typeof projectId !== 'string' || !/^[\w-]+$/.test(projectId)) throw new Error(t('Проект не найден'));
+    const { data } = await axios.get(`${MODRINTH_API}/project/${encodeURIComponent(projectId)}`, {
+      headers: HEADERS,
+      timeout: 10000
+    });
+    return {
+      gallery: (data.gallery || [])
+        .filter(item => /^https:\/\//i.test(item.url))
+        .map(({ url, title, description, featured }) => ({ url, title, description, featured }))
+    };
+  }
+
+  async getModpackVersions(projectId) {
+    if (typeof projectId !== 'string' || !/^[\w-]+$/.test(projectId)) throw new Error(t('Версия модпака недоступна'));
+    const response = await axios.get(`${MODRINTH_API}/project/${encodeURIComponent(projectId)}/version`, {
+      params: { include_changelog: false },
+      headers: HEADERS,
+      timeout: 10000
+    });
+    return (response.data || [])
+      .filter(version => version.status === 'listed' || version.status == null)
+      .map(version => ({
+        ...version,
+        archive: primaryFile({ files: (version.files || []).filter(file => /\.mrpack$/i.test(file.filename)) })
+      }))
+      .filter(version => version.archive)
+      .sort((a, b) => Date.parse(b.date_published) - Date.parse(a.date_published));
   }
 
   // ---------- local files ----------

@@ -5,7 +5,7 @@
  * and the launcher polls until the sign-in completes.
  * Then: Microsoft token -> Xbox Live -> XSTS -> Minecraft token -> profile.
  */
-const axios = require('axios');
+const { authRequest } = require('./auth-http');
 const { t } = require('./i18n/i18n');
 
 // Same public client id the official launcher (and msmc) uses, so older refresh tokens keep working
@@ -17,6 +17,10 @@ const TOKEN_URL = 'https://login.live.com/oauth20_token.srf';
 const form = (data) => new URLSearchParams(data).toString();
 const FORM_HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded' };
 const JSON_HEADERS = { 'Content-Type': 'application/json', Accept: 'application/json' };
+const axios = {
+  post: (url, data, options) => authRequest(url, { ...options, method: 'POST', data }),
+  get: (url, options) => authRequest(url, { ...options, method: 'GET' })
+};
 
 const XSTS_ERRORS = {
   2148916233: 'У этого аккаунта Microsoft нет профиля Xbox. Зайдите на xbox.com и создайте его.', // i18n-key
@@ -82,7 +86,7 @@ class MicrosoftAuth {
         if (err === 'slow_down') { interval += 5000; continue; }
         if (err === 'authorization_declined') throw new Error(t('Вход отклонён в окне Microsoft'));
         if (err === 'expired_token') break;
-        throw new Error(`Microsoft: ${(res.data && (res.data.error_description || err)) || res.status}`);
+        throw new Error(`Microsoft: HTTP ${res.status}`);
       }
       throw new Error(t('Код истёк. Попробуйте войти ещё раз.'));
     } finally {
@@ -101,9 +105,12 @@ class MicrosoftAuth {
       grant_type: 'refresh_token',
       refresh_token: refreshToken
     }), { headers: FORM_HEADERS, timeout: 15000, validateStatus: () => true });
-    if (res.status !== 200 || !res.data.access_token) {
-      throw new Error(t('Сессия Microsoft истекла. Войдите в аккаунт заново.'));
+    if (res.status === 401 || ['invalid_grant', 'interaction_required'].includes(res.data?.error)) {
+      const error = new Error(t('Сессия Microsoft истекла. Войдите в аккаунт заново.'));
+      error.code = 'MICROSOFT_SESSION_EXPIRED';
+      throw error;
     }
+    if (res.status !== 200 || !res.data?.access_token) throw new Error(`Microsoft: HTTP ${res.status}`);
     return res.data;
   }
 

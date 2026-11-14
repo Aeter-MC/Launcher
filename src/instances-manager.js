@@ -9,10 +9,12 @@ const crypto = require('crypto');
 const { t } = require('./i18n/i18n');
 const { contentType, contentDir } = require('./content-types');
 
-const PRISM_INSTANCES_DIR = path.join(process.env.APPDATA || '', 'PrismLauncher', 'instances');
-const PRISM_ICONS_DIR = path.join(process.env.APPDATA || '', 'PrismLauncher', 'icons');
+const { XDG_DATA_HOME } = require('./data-dir');
+const prismDataDir = process.platform === 'linux' ? XDG_DATA_HOME : process.env.APPDATA || '';
+const PRISM_INSTANCES_DIR = path.join(prismDataDir, 'PrismLauncher', 'instances');
+const PRISM_ICONS_DIR = path.join(prismDataDir, 'PrismLauncher', 'icons');
 
-// Custom build icon of a native instance, stored next to instance.json
+// Custom build icon of a native instance, stored next to instance.cfg
 const ICON_FILE = 'icon.png';
 const ICON_MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.bmp': 'image/bmp' };
 
@@ -41,8 +43,8 @@ function prismIconFile(iconKey) {
 /** Sets key=value in the text of a Prism instance.cfg, adding the line when it's missing. */
 function setCfgValue(cfg, key, value) {
   const re = new RegExp(`^${key}=.*$`, 'm');
-  const line = `${key}=${value}`;
-  if (re.test(cfg)) return cfg.replace(re, line);
+  const line = `${key}=${String(value).replace(/[\r\n]/g, ' ')}`;
+  if (re.test(cfg)) return cfg.replace(re, () => line);
   // Prism writes CRLF on Windows: keep the file's own line endings
   const eol = cfg.includes('\r\n') ? '\r\n' : '\n';
   return cfg.replace(/\s*$/, eol) + line + eol;
@@ -55,6 +57,11 @@ function cfgValue(cfg, key) {
 
 // Launch settings of a build: any field left out means "as in the launcher settings"
 const LAUNCH_KEYS = ['maxRam', 'minRam', 'javaPath', 'jvmPreset', 'customJvmArgs', 'resolutionWidth', 'resolutionHeight', 'fullscreen', 'noOptionsSync'];
+
+/** Merge validated per-build overrides over the launcher's defaults. */
+function resolveLaunchSettings(settings, instance) {
+  return { ...settings, ...cleanLaunch(instance?.launch) };
+}
 
 /** Keeps only known fields with sensible values. */
 function cleanLaunch(launch) {
@@ -100,10 +107,47 @@ function prismLaunch(cfg) {
   const preset = cfgValue(cfg, 'aetermc_jvmPreset');
   if (preset) launch.jvmPreset = preset;
   if (cfgValue(cfg, 'aetermc_noOptionsSync') === 'true') launch.noOptionsSync = true;
+  const inherited = (cfgValue(cfg, 'aetermc_inheritedLaunchFields') || '').split(',');
+  for (const field of inherited) delete launch[field];
   return cleanLaunch(launch);
 }
 
-function writePrismLaunch(cfg, launch) {
+// Prism component ids of the loaders, with the display names Prism caches
+const LOADER_COMPONENTS = {
+  fabric: { uid: 'net.fabricmc.fabric-loader', name: 'Fabric Loader', intermediary: true },
+  quilt: { uid: 'org.quiltmc.quilt-loader', name: 'Quilt Loader', intermediary: true },
+  forge: { uid: 'net.minecraftforge', name: 'Forge' },
+  neoforge: { uid: 'net.neoforged', name: 'NeoForge' }
+};
+
+function mmcPack(inst) {
+  const components = [
+    { cachedName: 'Minecraft', cachedVersion: inst.version, important: true, uid: 'net.minecraft', version: inst.version }
+  ];
+  const loader = LOADER_COMPONENTS[inst.loader];
+  if (loader) {
+    // Fabric and Quilt map names through Intermediary; Prism would add it too, but only after a refresh
+    if (loader.intermediary) {
+      components.push({ cachedName: 'Intermediary Mappings', cachedVersion: inst.version, dependencyOnly: true, uid: 'net.fabricmc.intermediary', version: inst.version });
+    }
+    components.push({ cachedName: loader.name, cachedVersion: inst.loaderVersion, uid: loader.uid, version: inst.loaderVersion || '' });
+  }
+  return { components, formatVersion: 1 };
+}
+
+function prismComponents(pack) {
+  const components = Array.isArray(pack?.components) ? pack.components : [];
+  const minecraft = components.find(c => c?.uid === 'net.minecraft');
+  const version = minecraft?.version || minecraft?.cachedVersion || '';
+  // Prefer Quilt if a pack also lists Fabric.
+  for (const loader of ['quilt', 'fabric', 'neoforge', 'forge']) {
+    const component = components.find(c => c?.uid === LOADER_COMPONENTS[loader].uid);
+    if (component) return { version, loader, loaderVersion: component.version || '' };
+  }
+  return { version, loader: 'vanilla', loaderVersion: '' };
+}
+
+function writePrismLaunch(cfg, launch, preserveInheritance = false) {
   const set = (k, v) => { cfg = setCfgValue(cfg, k, v); };
   const has = (k) => launch[k] !== undefined;
   set('OverrideMemory', has('maxRam') || has('minRam'));
@@ -122,9 +166,47 @@ function writePrismLaunch(cfg, launch) {
     if (has('resolutionHeight')) set('MinecraftWinHeight', launch.resolutionHeight);
     set('LaunchMaximized', !!launch.fullscreen);
   }
+  if (preserveInheritance) {
+    const grouped = ['minRam', 'maxRam', 'resolutionWidth', 'resolutionHeight', 'fullscreen'];
+    set('aetermc_inheritedLaunchFields', grouped.filter(key => !has(key)).join(','));
+  }
   set('aetermc_jvmPreset', launch.jvmPreset || '');
   set('aetermc_noOptionsSync', !!launch.noOptionsSync);
   return cfg;
+}
+
+const CFG_HEADER = '[General]\nConfigVersion=1.2\nInstanceType=OneSix\n';
+
+function componentSignature(inst) {
+  return [inst.version, inst.loader, inst.loaderVersion].join('|');
+}
+
+function nativeConfig(cfg, inst) {
+  const values = {
+    name: inst.name,
+    iconKey: inst.customIcon ? 'icon' : 'default',
+    lastLaunchTime: inst.lastPlayed || 0,
+    totalTimePlayed: inst.totalPlaytime || 0,
+    aetermc_id: inst.id,
+    aetermc_created: inst.created || Date.now(),
+    aetermc_icon: inst.icon || 'grass',
+    aetermc_iconBlock: inst.iconBlock || '',
+    aetermc_importedFrom: inst.importedFrom || '',
+    aetermc_versionId: inst.versionId || '',
+    aetermc_versionSignature: componentSignature(inst)
+  };
+  for (const [key, value] of Object.entries(values)) cfg = setCfgValue(cfg, key, value);
+  return cfg;
+}
+
+function writeAtomic(file, text) {
+  const temp = `${file}.${crypto.randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temp, text, 'utf-8');
+    fs.renameSync(temp, file);
+  } finally {
+    fs.rmSync(temp, { force: true });
+  }
 }
 
 // Not worth copying when importing: regenerated by the game
@@ -173,6 +255,61 @@ class InstancesManager {
     }
   }
 
+  migrateLegacyInstances() {
+    let entries;
+    try {
+      entries = fs.readdirSync(this.instancesDir, { withFileTypes: true });
+    } catch (e) {
+      console.error('[Instances] Could not read the instance library:', e.message);
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(this.instancesDir, entry.name);
+      try {
+        this.migrateLegacyInstance(dir);
+      } catch (e) {
+        console.error(`[Instances] Could not migrate ${entry.name}:`, e.message);
+      }
+    }
+  }
+
+  migrateLegacyInstance(dir) {
+    const legacy = path.join(dir, 'instance.json');
+    if (!fs.existsSync(legacy)) return;
+    const data = JSON.parse(fs.readFileSync(legacy, 'utf-8'));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid instance.json');
+    const cfgPath = path.join(dir, 'instance.cfg');
+    const packPath = path.join(dir, 'mmc-pack.json');
+    const current = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : null;
+    if (!current || !cfgValue(current, 'aetermc_id')) {
+      const saved = { version: data.version || '1.21.1', loader: data.loader || 'vanilla', loaderVersion: data.loaderVersion || '' };
+      let components = saved;
+      try {
+        const parsed = prismComponents(JSON.parse(fs.readFileSync(packPath, 'utf-8')));
+        if (parsed.version) components = parsed;
+      } catch (e) {}
+      if (components === saved) writeAtomic(packPath, JSON.stringify(mmcPack(saved), null, 2));
+      const cfg = current ?? writePrismLaunch(CFG_HEADER, cleanLaunch(data.launch), true);
+      writeAtomic(cfgPath, nativeConfig(cfg, {
+        ...data,
+        ...components,
+        id: data.id || path.basename(dir),
+        name: cfgValue(cfg, 'name') || data.name || path.basename(dir),
+        versionId: componentSignature(saved) === componentSignature(components) ? data.versionId : ''
+      }));
+    }
+    const backup = `${legacy}.legacy`;
+    fs.renameSync(legacy, fs.existsSync(backup) ? `${backup}-${crypto.randomUUID()}` : backup);
+  }
+
+  updateInstanceCfg(target, update) {
+    if (!target.isPrism) this.migrateLegacyInstance(target.path);
+    const file = path.join(target.path, 'instance.cfg');
+    const cfg = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : CFG_HEADER;
+    writeAtomic(file, update(cfg));
+  }
+
   /**
    * Reads an instance from a directory.
    */
@@ -182,9 +319,19 @@ class InstancesManager {
     const instanceCfg = path.join(dirPath, 'instance.cfg');
 
     // 1. Native MCL Instance
-    if (fs.existsSync(configJson)) {
+    if (path.dirname(dirPath) !== PRISM_INSTANCES_DIR && fs.existsSync(configJson)) {
       try {
         const data = JSON.parse(fs.readFileSync(configJson, 'utf-8'));
+        const cfg = fs.existsSync(instanceCfg) ? fs.readFileSync(instanceCfg, 'utf-8') : null;
+        const saved = { version: data.version || '1.21.1', loader: data.loader || 'vanilla', loaderVersion: data.loaderVersion || '' };
+        let components = saved;
+        try {
+          if (fs.existsSync(mmcPackJson)) {
+            const parsed = prismComponents(JSON.parse(fs.readFileSync(mmcPackJson, 'utf-8')));
+            if (parsed.version) components = parsed;
+          }
+        } catch (e) {}
+        const sameComponents = Object.keys(saved).every(key => saved[key] === components[key]);
         const mcDir = path.join(dirPath, 'minecraft');
         const modsDir = fs.existsSync(mcDir) ? path.join(mcDir, 'mods') : path.join(dirPath, 'mods');
 
@@ -195,11 +342,9 @@ class InstancesManager {
 
         return {
           id: data.id || path.basename(dirPath),
-          name: data.name || path.basename(dirPath),
-          version: data.version || '1.21.1',
-          loader: data.loader || 'vanilla',
-          loaderVersion: data.loaderVersion || '',
-          versionId: data.versionId || '',
+          name: (cfg && cfgValue(cfg, 'name')) || data.name || path.basename(dirPath),
+          ...components,
+          versionId: sameComponents ? data.versionId || '' : '',
           icon: data.icon || 'grass',
           iconBlock: data.iconBlock || null,
           iconImage: data.customIcon ? iconDataUrl(path.join(dirPath, ICON_FILE)) : null,
@@ -210,7 +355,7 @@ class InstancesManager {
           lastPlayed: data.lastPlayed || null,
           totalPlaytime: data.totalPlaytime || 0,
           importedFrom: data.importedFrom || null,
-          launch: cleanLaunch(data.launch),
+          launch: cfg !== null ? prismLaunch(cfg) : cleanLaunch(data.launch),
           isPrism: false
         };
       } catch (e) {
@@ -218,57 +363,28 @@ class InstancesManager {
       }
     }
 
-    // 2. Prism Launcher Instance
+    // 2. AeterMC and Prism Launcher config format
     if (fs.existsSync(mmcPackJson) || fs.existsSync(instanceCfg)) {
-      let name = path.basename(dirPath);
+      const cfg = fs.existsSync(instanceCfg) ? fs.readFileSync(instanceCfg, 'utf-8') : '';
+      const isPrism = path.dirname(dirPath) === PRISM_INSTANCES_DIR;
+      const ownId = isPrism ? null : cfgValue(cfg, 'aetermc_id');
+      const name = cfgValue(cfg, 'name') || path.basename(dirPath);
+      const iconKey = cfgValue(cfg, 'iconKey') || 'default';
+      const launch = prismLaunch(cfg);
+      const lastPlayed = Number(cfgValue(cfg, 'lastLaunchTime')) || null;
+      const totalPlaytime = Number(cfgValue(cfg, 'totalTimePlayed')) || 0;
       let version = '1.21.1';
       let loader = 'vanilla';
       let loaderVersion = '';
-      let icon = 'default';
-      let lastPlayed = null;
-      let totalPlaytime = 0;
-      let launch = {};
-
-      if (fs.existsSync(instanceCfg)) {
-        const cfgText = fs.readFileSync(instanceCfg, 'utf-8');
-        launch = prismLaunch(cfgText);
-        const nameMatch = cfgText.match(/^name=(.*)$/m);
-        if (nameMatch) name = nameMatch[1].trim();
-
-        const iconMatch = cfgText.match(/^iconKey=(.*)$/m);
-        if (iconMatch) icon = iconMatch[1].trim();
-
-        const lastMatch = cfgText.match(/^lastLaunchTime=(\d+)$/m);
-        if (lastMatch) lastPlayed = parseInt(lastMatch[1], 10) || null;
-
-        const timeMatch = cfgText.match(/^totalTimePlayed=(\d+)$/m);
-        if (timeMatch) totalPlaytime = parseInt(timeMatch[1], 10) || 0;
-      }
 
       if (fs.existsSync(mmcPackJson)) {
         try {
           const pack = JSON.parse(fs.readFileSync(mmcPackJson, 'utf-8'));
           if (pack.components) {
-            const mcComp = pack.components.find(c => c.uid === 'net.minecraft');
-            if (mcComp) version = mcComp.version || mcComp.cachedVersion || version;
-
-            const fabricComp = pack.components.find(c => c.uid === 'net.fabricmc.fabric-loader');
-            if (fabricComp) {
-              loader = 'fabric';
-              loaderVersion = fabricComp.version || '';
-            }
-
-            const quiltComp = pack.components.find(c => c.uid === 'org.quiltmc.quilt-loader');
-            if (quiltComp) {
-              loader = 'quilt';
-              loaderVersion = quiltComp.version || '';
-            }
-
-            const forgeComp = pack.components.find(c => c.uid === 'net.minecraftforge' || c.uid === 'net.neoforged');
-            if (forgeComp) {
-              loader = forgeComp.uid.includes('neoforged') ? 'neoforge' : 'forge';
-              loaderVersion = forgeComp.version || '';
-            }
+            const components = prismComponents(pack);
+            version = components.version || version;
+            loader = components.loader;
+            loaderVersion = components.loaderVersion;
           }
         } catch (e) {}
       }
@@ -283,14 +399,19 @@ class InstancesManager {
       }
 
       return {
-        id: 'prism-' + path.basename(dirPath),
-        name: name,
-        version: version,
-        loader: loader,
-        loaderVersion: loaderVersion,
-        icon: icon,
-        iconBlock: null,
-        iconImage: (() => { const f = prismIconFile(icon); return f ? iconDataUrl(f) : null; })(),
+        id: ownId || (isPrism ? 'prism-' : '') + path.basename(dirPath),
+        name,
+        version,
+        loader,
+        loaderVersion,
+        versionId: !isPrism && cfgValue(cfg, 'aetermc_versionSignature') === componentSignature({ version, loader, loaderVersion })
+          ? cfgValue(cfg, 'aetermc_versionId') || '' : '',
+        icon: isPrism ? iconKey : cfgValue(cfg, 'aetermc_icon') || 'grass',
+        iconBlock: isPrism ? null : cfgValue(cfg, 'aetermc_iconBlock'),
+        iconImage: isPrism
+          ? (() => { const f = prismIconFile(iconKey); return f ? iconDataUrl(f) : null; })()
+          : iconKey === 'icon' ? iconDataUrl(path.join(dirPath, ICON_FILE)) : null,
+        importedFrom: isPrism ? null : cfgValue(cfg, 'aetermc_importedFrom'),
         path: dirPath,
         minecraftDir: fs.existsSync(mcDir) ? mcDir : dirPath,
         modsDir: modsDir,
@@ -298,7 +419,7 @@ class InstancesManager {
         lastPlayed: lastPlayed,
         totalPlaytime: totalPlaytime,
         launch,
-        isPrism: true
+        isPrism
       };
     }
 
@@ -428,18 +549,7 @@ class InstancesManager {
       }
       this.ensureDir(path.join(destMc, 'mods'));
 
-      fs.writeFileSync(path.join(destDir, 'instance.json'), JSON.stringify({
-        id: slug,
-        name: src.name,
-        version: src.version,
-        loader: src.loader,
-        loaderVersion: src.loaderVersion,
-        icon: 'grass',
-        created: Date.now(),
-        lastPlayed: src.lastPlayed,
-        totalPlaytime: src.totalPlaytime,
-        importedFrom: srcDir
-      }, null, 2), 'utf-8');
+      this.writeNewInstance(destDir, { ...src, id: slug, icon: 'grass', importedFrom: srcDir });
     } catch (e) {
       fs.rmSync(destDir, { recursive: true, force: true });
       throw new Error(t('Не удалось скопировать «{name}»: {error}', { name: src.name, error: e.message }));
@@ -452,18 +562,19 @@ class InstancesManager {
   /**
    * Creates a new isolated Minecraft instance.
    */
-  async createInstance(options) {
+  async createInstance(options, parentDir = this.instancesDir) {
     const {
       name = 'New Instance',
       version = '1.21.1',
       loader = 'vanilla',
       loaderVersion = '',
       versionId = version, // loader profile in versions/, installed by the caller
-      icon = 'grass'
+      icon = 'grass',
+      launch = {}
     } = options;
 
-    const safeSlug = (name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase() || 'instance') + '_' + Date.now().toString(36);
-    const instDir = path.join(this.instancesDir, safeSlug);
+    const safeSlug = (name.replace(/[^a-zA-Z0-9_-]/g, '').toLowerCase().slice(0, 48) || 'instance') + '_' + crypto.randomBytes(6).toString('hex');
+    const instDir = path.join(parentDir, safeSlug);
     const mcDir = path.join(instDir, 'minecraft');
     const modsDir = path.join(mcDir, 'mods');
 
@@ -485,9 +596,15 @@ class InstancesManager {
       totalPlaytime: 0
     };
 
-    fs.writeFileSync(path.join(instDir, 'instance.json'), JSON.stringify(instData, null, 2), 'utf-8');
+    this.writeNewInstance(instDir, { ...instData, launch });
 
     return this.readInstance(instDir);
+  }
+
+  writeNewInstance(dir, inst) {
+    const cfg = nativeConfig(writePrismLaunch(CFG_HEADER, cleanLaunch(inst.launch), true), inst);
+    writeAtomic(path.join(dir, 'mmc-pack.json'), JSON.stringify(mmcPack(inst), null, 2));
+    writeAtomic(path.join(dir, 'instance.cfg'), cfg);
   }
 
   /**
@@ -503,19 +620,26 @@ class InstancesManager {
 
     fs.cpSync(source.path, destDir, { recursive: true });
 
-    // Update instance.json if exists
-    const configPath = path.join(destDir, 'instance.json');
-    if (fs.existsSync(configPath)) {
-      try {
-        const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        d.id = safeSlug;
-        d.name = newName;
-        d.created = Date.now();
-        d.totalPlaytime = 0;
-        fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
-      } catch (e) {}
+    try {
+      this.migrateLegacyInstance(destDir);
+      const file = path.join(destDir, 'instance.cfg');
+      const cfg = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : CFG_HEADER;
+      writeAtomic(file, nativeConfig(cfg, {
+        ...source,
+        id: safeSlug,
+        name: newName,
+        created: Date.now(),
+        lastPlayed: null,
+        totalPlaytime: 0,
+        customIcon: fs.existsSync(path.join(destDir, ICON_FILE))
+      }));
+      if (!fs.existsSync(path.join(destDir, 'mmc-pack.json'))) {
+        writeAtomic(path.join(destDir, 'mmc-pack.json'), JSON.stringify(mmcPack(source), null, 2));
+      }
+    } catch (e) {
+      fs.rmSync(destDir, { recursive: true, force: true });
+      throw e;
     }
-
     return this.readInstance(destDir);
   }
 
@@ -561,20 +685,14 @@ class InstancesManager {
       return this.readInstance(target.path);
     }
 
-    const configPath = path.join(target.path, 'instance.json');
-    const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    this.migrateLegacyInstance(target.path);
     const iconPath = path.join(target.path, ICON_FILE);
-    if (choice && choice.png) {
-      fs.writeFileSync(iconPath, choice.png);
-      d.customIcon = true;
-      delete d.iconBlock;
-    } else {
-      fs.rmSync(iconPath, { force: true });
-      delete d.customIcon;
-      if (choice && choice.block) d.iconBlock = choice.block;
-      else delete d.iconBlock;
-    }
-    fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
+    if (choice?.png) fs.writeFileSync(iconPath, choice.png);
+    else fs.rmSync(iconPath, { force: true });
+    this.updateInstanceCfg(target, cfg => {
+      cfg = setCfgValue(cfg, 'iconKey', choice?.png ? 'icon' : 'default');
+      return setCfgValue(cfg, 'aetermc_iconBlock', choice?.block || '');
+    });
     return this.readInstance(target.path);
   }
 
@@ -584,16 +702,7 @@ class InstancesManager {
     if (!target) throw new Error(t('Сборка не найдена'));
     const clean = String(name || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 64);
     if (!clean) throw new Error(t('Введите название сборки'));
-    if (target.isPrism) {
-      const cfgPath = path.join(target.path, 'instance.cfg');
-      const cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : '[General]\n';
-      fs.writeFileSync(cfgPath, setCfgValue(cfg, 'name', clean), 'utf-8');
-    } else {
-      const configPath = path.join(target.path, 'instance.json');
-      const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      d.name = clean;
-      fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
-    }
+    this.updateInstanceCfg(target, cfg => setCfgValue(cfg, 'name', clean));
     return this.readInstance(target.path);
   }
 
@@ -605,22 +714,15 @@ class InstancesManager {
     const target = this.listInstances().find(i => i.id === instanceId);
     if (!target) throw new Error(t('Сборка не найдена'));
     if (!version || target.loader === 'vanilla') throw new Error(t('У сборки нет загрузчика'));
-    if (target.isPrism) {
-      const packPath = path.join(target.path, 'mmc-pack.json');
-      const pack = JSON.parse(fs.readFileSync(packPath, 'utf-8'));
-      const uids = { fabric: 'net.fabricmc.fabric-loader', quilt: 'org.quiltmc.quilt-loader', forge: 'net.minecraftforge', neoforge: 'net.neoforged' };
-      const comp = (pack.components || []).find(c => c.uid === uids[target.loader]);
-      if (!comp) throw new Error(t('В сборке Prism не найден загрузчик'));
-      comp.version = version;
-      comp.cachedVersion = version;
-      fs.writeFileSync(packPath, JSON.stringify(pack, null, 4), 'utf-8');
-    } else {
-      const configPath = path.join(target.path, 'instance.json');
-      const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      d.loaderVersion = version;
-      delete d.versionId; // the old profile id no longer matches
-      fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
-    }
+    if (!target.isPrism) this.migrateLegacyInstance(target.path);
+    const packPath = path.join(target.path, 'mmc-pack.json');
+    const pack = JSON.parse(fs.readFileSync(packPath, 'utf-8'));
+    const comp = (pack.components || []).find(c => c.uid === LOADER_COMPONENTS[target.loader].uid);
+    if (!comp) throw new Error(t('В сборке Prism не найден загрузчик'));
+    comp.version = version;
+    comp.cachedVersion = version;
+    writeAtomic(packPath, JSON.stringify(pack, null, 2));
+    if (!target.isPrism) this.updateInstanceCfg(target, cfg => setCfgValue(cfg, 'aetermc_versionId', ''));
     return this.readInstance(target.path);
   }
 
@@ -628,18 +730,7 @@ class InstancesManager {
   setLaunchSettings(instanceId, launch) {
     const target = this.listInstances().find(i => i.id === instanceId);
     if (!target) throw new Error(t('Сборка не найдена'));
-    const clean = cleanLaunch(launch);
-    if (target.isPrism) {
-      const cfgPath = path.join(target.path, 'instance.cfg');
-      const cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : '[General]\n';
-      fs.writeFileSync(cfgPath, writePrismLaunch(cfg, clean), 'utf-8');
-    } else {
-      const configPath = path.join(target.path, 'instance.json');
-      const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (Object.keys(clean).length) d.launch = clean;
-      else delete d.launch;
-      fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
-    }
+    this.updateInstanceCfg(target, cfg => writePrismLaunch(cfg, cleanLaunch(launch), !target.isPrism));
     return this.readInstance(target.path);
   }
 
@@ -651,53 +742,24 @@ class InstancesManager {
     const target = this.listInstances().find(i => i.id === instanceId);
     if (!target) return;
 
-    if (target.isPrism) {
-      const cfgPath = path.join(target.path, 'instance.cfg');
-      try {
-        let cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : '[General]\n';
-        cfg = setCfgValue(cfg, 'lastLaunchTime', Date.now());
-        fs.writeFileSync(cfgPath, cfg, 'utf-8');
-      } catch (e) {}
-      return;
-    }
-
-    const configPath = path.join(target.path, 'instance.json');
-    if (fs.existsSync(configPath)) {
-      try {
-        const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        d.lastPlayed = Date.now();
-        fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
-      } catch (e) {}
+    try {
+      this.updateInstanceCfg(target, cfg => setCfgValue(cfg, 'lastLaunchTime', Date.now()));
+    } catch (e) {
+      console.error('[Instances] Could not record the launch:', e.message);
     }
   }
 
-  /**
-   * Updates playtime for an instance.
-   */
+  /** Updates playtime for an instance. */
   updatePlaytime(instanceId, seconds) {
-    const instances = this.listInstances();
-    const target = instances.find(i => i.id === instanceId);
+    const target = this.listInstances().find(i => i.id === instanceId);
     if (!target) return;
-
-    // Prism instances keep it in instance.cfg, so Prism itself shows the same numbers
-    if (target.isPrism) {
-      const cfgPath = path.join(target.path, 'instance.cfg');
-      try {
-        let cfg = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf-8') : '[General]\n';
+    try {
+      this.updateInstanceCfg(target, cfg => {
         cfg = setCfgValue(cfg, 'totalTimePlayed', (target.totalPlaytime || 0) + seconds);
-        cfg = setCfgValue(cfg, 'lastTimePlayed', seconds);
-        fs.writeFileSync(cfgPath, cfg, 'utf-8');
-      } catch (e) {}
-      return;
-    }
-
-    const configPath = path.join(target.path, 'instance.json');
-    if (fs.existsSync(configPath)) {
-      try {
-        const d = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        d.totalPlaytime = (d.totalPlaytime || 0) + seconds;
-        fs.writeFileSync(configPath, JSON.stringify(d, null, 2), 'utf-8');
-      } catch (e) {}
+        return setCfgValue(cfg, 'lastTimePlayed', seconds);
+      });
+    } catch (e) {
+      console.error('[Instances] Could not record playtime:', e.message);
     }
   }
 
@@ -784,7 +846,13 @@ class InstancesManager {
 
 module.exports = {
   LAUNCH_KEYS,
+  resolveLaunchSettings,
   writePrismLaunch,
+  prismLaunch,
+  prismComponents,
+  mmcPack,
+  cfgValue,
+  setCfgValue,
   cleanLaunch,
   InstancesManager,
   collectFiles

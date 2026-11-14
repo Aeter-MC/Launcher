@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AeterMC
+Comment=Minecraft Java Edition launcher
+Exec=aetermc
+Icon=aetermc
+Terminal=false
+Categories=Game;
+StartupWMClass=AeterMC

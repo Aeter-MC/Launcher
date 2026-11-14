@@ -84,6 +84,13 @@ h1, h2, h3 { font-weight: 600; }
 .titlebar-update { width: auto; display: flex; align-items: center; gap: 6px; padding: 0 12px; color: var(--color-accent); font-size: var(--font-size-xs); font-weight: 600; }
 .titlebar-update svg.ic { width: 14px; height: 14px; stroke-width: 2; }
 
+html[data-native-titlebar] .titlebar { pointer-events: none; justify-content: flex-end; }
+html[data-native-titlebar] .titlebar-drag,
+html[data-native-titlebar] .titlebar-btn:not(.titlebar-update) { display: none; }
+html[data-native-titlebar] .titlebar-update { pointer-events: auto; }
+html[data-native-titlebar]:not(:has(.titlebar-update:not(.hidden))) .page { padding-top: 10px; }
+html[data-native-titlebar] .viewer-top { padding-top: 4px; }
+
 /* ================= LAYOUT ================= */
 .app { flex: 1; display: flex; min-height: 0; }
 
@@ -129,6 +136,8 @@ h1, h2, h3 { font-weight: 600; }
 .account-chip:hover { background: var(--color-surface); }
 .account-chip-avatar { width: 30px; height: 30px; border-radius: 4px; image-rendering: pixelated; background: var(--color-hover); }
 .account-chip-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.account-chip-identity { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; min-width: 0; }
+.account-session-expired { color: var(--color-danger, #f87171); font-size: var(--font-size-xs); white-space: nowrap; }
 .account-chip-name { color: var(--color-text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-chip-type { font-size: var(--font-size-xs); }
 
@@ -755,8 +764,8 @@ h1, h2, h3 { font-weight: 600; }
 .mods-head .inst-icon { width: 36px; height: 36px; }
 .mods-head-text { min-width: 0; }
 .mods-head h1 { line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#page-mods .page-head { border-bottom: 1px solid var(--color-line); margin-bottom: 14px; padding-bottom: 0; align-items: flex-end; }
-#page-mods .mods-head { padding-bottom: 12px; }
+#page-mods .page-head, #page-modrinth-packs .page-head { border-bottom: 1px solid var(--color-line); margin-bottom: 14px; padding-bottom: 0; align-items: flex-end; }
+#page-mods .mods-head, #page-modrinth-packs .mods-head { padding-bottom: 12px; }
 /* mods / resource packs / shaders switch next to the installed / catalog tabs */
 .mods-head-right { display: flex; align-items: center; gap: 22px; align-self: stretch; padding-bottom: 12px; }
 .mods-head-right .tabs { align-self: flex-end; margin-bottom: -12px; }
@@ -909,6 +918,7 @@ label.setting { cursor: pointer; }
 .account-row .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .account-row .row-title { font-weight: 600; }
 .account-row .badge { font-size: var(--font-size-xs); color: var(--color-text-3); }
+.account-row .account-relogin { align-self: flex-start; margin-top: 4px; cursor: pointer; }
 .account-check { color: var(--color-accent-text); }
 
 /* ================= MODALS ================= */
@@ -1364,3 +1374,23 @@ body.gp-mode .toasts { bottom: 62px; } /* above the hint bar */
 .gp-b { background: #c8433a; }
 .gp-x { background: #3a6fc8; }
 .gp-wide { border-radius: 5px; background: var(--color-line-strong); color: var(--color-text); }
+
+.modrinth-pack-pages { margin-top: 12px; justify-content: flex-end; }
+.catalog-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.catalog-actions .trow-status:empty { display: none; }
+.modrinth-preview-box { width: 720px; }
+#modrinth-preview-link { color: var(--color-text); text-decoration: none; }
+.modrinth-preview-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.modrinth-preview-heading h3 { overflow-wrap: anywhere; }
+.modrinth-preview-gallery { margin-top: 14px; }
+.modrinth-preview-gallery img {
+  display: block;
+  width: 100%;
+  max-height: min(39vh, 420px);
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--color-input);
+  border-radius: var(--radius-icon);
+}
+.modrinth-preview-nav { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 8px; }
+.modrinth-preview-nav span { text-align: center; overflow-wrap: anywhere; }

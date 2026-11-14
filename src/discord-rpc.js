@@ -93,10 +93,20 @@ class DiscordPresence {
   }
 
   read(chunk) {
+    // A local pipe is not a trusted source. Bound both a frame and buffered data
+    // before concatenating; reject signed/oversized lengths before slicing.
+    if (chunk.length > 1024 * 1024 || this.buffer.length + chunk.length > 1024 * 1024) {
+      this.reset(new Error('Discord IPC frame exceeds the size limit'));
+      return;
+    }
     this.buffer = Buffer.concat([this.buffer, chunk]);
     while (this.buffer.length >= 8) {
       const op = this.buffer.readInt32LE(0);
       const len = this.buffer.readInt32LE(4);
+      if (op < OP_HANDSHAKE || op > OP_PONG || len < 0 || len > 65536) {
+        this.reset(new Error('Invalid Discord IPC frame'));
+        return;
+      }
       if (this.buffer.length < 8 + len) return;
       let data = null;
       try {

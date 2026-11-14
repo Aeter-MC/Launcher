@@ -8,7 +8,9 @@ const os = require('os');
 const { DEFAULT_SYNC_MODES } = require('./options-sync');
 const { LEGACY_DEFAULT_ARGS } = require('./jvm-flags');
 
-const DEFAULT_MINECRAFT_DIR = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), '.minecraft');
+const DEFAULT_MINECRAFT_DIR = path.join(process.platform === 'linux'
+  ? os.homedir()
+  : process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), '.minecraft');
 
 function getSettingsPath(appDataDir) {
   const dir = appDataDir || path.join(os.homedir(), '.mcl-launcher');
@@ -41,7 +43,8 @@ function getDefaultSettings() {
     discordPresence: true, // "Играет в AeterMC" in Discord while the game runs
     actionAfterLaunch: 'minimize', // 'minimize' | 'hide' | 'keep'
     showSnapshots: false,
-    showConsole: true,
+    showConsole: false,
+    nativeTitlebar: false,
     theme: 'dark-mono', // id of a file in design/themes
     autoCheckModUpdates: true,
     autoUpdate: true, // launcher updates: download in the background, put in place on exit

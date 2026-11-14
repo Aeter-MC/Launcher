@@ -9,17 +9,32 @@
  */
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { pipeline } = require('stream/promises');
 const crypto = require('crypto');
 const axios = require('axios');
 const AdmZip = require('adm-zip');
+const { checkedDestination, openCheckedZip, checkedEntry } = require('./safe-zip');
 const { t } = require('./i18n/i18n');
 const { collectFiles } = require('./instances-manager');
 const { HEADERS } = require('./modrinth-manager');
 const { LoaderManager } = require('./loaders');
 const { CONTENT } = require('./content-types');
 
+const MODRINTH_CDN = new Set(['cdn.modrinth.com']);
 const INDEX_FILE = 'modrinth.index.json';
 const DOWNLOAD_THREADS = 6;
+const PACK_HOSTS = new Set(['cdn.modrinth.com', 'github.com', 'raw.githubusercontent.com', 'gitlab.com']);
+const REDIRECT_HOSTS = new Set([...PACK_HOSTS, 'release-assets.githubusercontent.com', 'objects.githubusercontent.com']);
+
+function allowedPackUrl(url, hosts) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && !parsed.port && !parsed.username && !parsed.password && hosts.has(parsed.hostname);
+  } catch (e) {
+    return false;
+  }
+}
 
 // A build's loader and its key in the pack's dependencies; Quilt first, a Quilt pack may list Fabric too
 const LOADER_KEYS = { quilt: 'quilt-loader', fabric: 'fabric-loader', neoforge: 'neoforge', forge: 'forge' };
@@ -39,15 +54,16 @@ const EXPORT_OFF = new Set(['saves', 'screenshots', 'options.txt', 'servers.dat'
 
 /** Full path of a pack path inside dir, or null when the path would lead out of it. */
 function insideDir(dir, rel) {
-  if (typeof rel !== 'string' || !rel || path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) return null;
-  const root = path.resolve(dir);
-  const full = path.resolve(root, rel);
-  return full.startsWith(root + path.sep) ? full : null;
+  return checkedDestination(dir, rel);
+}
+
+function validVersion(version) {
+  return typeof version === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.+ -]*$/.test(version) && !version.includes('..');
 }
 
 function openZip(file) {
   try {
-    return new AdmZip(file);
+    return openCheckedZip(file);
   } catch (e) {
     throw new Error(t('Не удалось открыть модпак: {error}', { error: e.message }));
   }
@@ -56,7 +72,7 @@ function openZip(file) {
 function readIndex(zip) {
   let index;
   try {
-    index = JSON.parse(zip.readAsText(INDEX_FILE));
+    index = JSON.parse(checkedEntry(zip.getEntry(INDEX_FILE), 16 * 1024 * 1024).toString('utf8'));
   } catch (e) {
     throw new Error(t('Это не модпак Modrinth: в архиве нет {file}', { file: INDEX_FILE }));
   }
@@ -116,18 +132,33 @@ function describe(file, zip, index) {
 
 async function forEachLimit(items, limit, fn) {
   let next = 0;
+  let failure;
   const worker = async () => {
-    while (next < items.length) await fn(items[next++]);
+    while (!failure && next < items.length) {
+      try {
+        await fn(items[next++]);
+      } catch (e) {
+        failure ||= e;
+      }
+    }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  if (failure) throw failure;
 }
 
 /**
  * Downloads one file of the pack, trying its links in turn, and checks its hash.
  * onBytes(n) reports received bytes; a failed attempt takes its bytes back.
  */
-async function downloadPackFile(file, dest, onBytes) {
-  const urls = (file.downloads || []).filter(u => /^https?:\/\//i.test(u));
+async function downloadPackFile(file, dest, onBytes, online = false) {
+  const urls = (file.downloads || []).filter(url => online ? allowedPackUrl(url, PACK_HOSTS) : /^https?:\/\//i.test(url));
+  const redirectOptions = online ? {
+    beforeRedirect: (options) => {
+      if (!allowedPackUrl(options.href, REDIRECT_HOSTS)) {
+        throw new Error(t('Недопустимая ссылка на файл модпака'));
+      }
+    }
+  } : {};
   const hashes = file.hashes || {};
   const algo = hashes.sha512 ? 'sha512' : hashes.sha1 ? 'sha1' : null;
   if (!urls.length) throw new Error(t('У файла {file} нет ссылки на скачивание', { file: file.path }));
@@ -140,20 +171,14 @@ async function downloadPackFile(file, dest, onBytes) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       let received = 0;
       try {
-        const res = await axios.get(url, { responseType: 'stream', headers: HEADERS, timeout: 30000 });
+        const res = await axios.get(url, { responseType: 'stream', headers: HEADERS, timeout: 30000, ...redirectOptions });
         const hash = crypto.createHash(algo);
-        await new Promise((resolve, reject) => {
-          const out = fs.createWriteStream(part);
-          res.data.on('data', (chunk) => {
-            hash.update(chunk);
-            received += chunk.length;
-            onBytes(chunk.length);
-          });
-          res.data.on('error', reject);
-          out.on('error', reject);
-          out.on('finish', resolve);
-          res.data.pipe(out);
+        res.data.on('data', (chunk) => {
+          hash.update(chunk);
+          received += chunk.length;
+          onBytes(chunk.length);
         });
+        await pipeline(res.data, fs.createWriteStream(part));
         if (hash.digest('hex') !== String(hashes[algo]).toLowerCase()) {
           throw new Error(t('Файл {file} скачался повреждённым, попробуйте ещё раз', { file: path.basename(dest) }));
         }
@@ -183,6 +208,35 @@ class MrpackManager {
     this.modrinthManager = modrinthManager;
   }
 
+  async installModrinthPack(projectId, versionId, { onProgress, getJava }) {
+    const versions = await this.modrinthManager.getModpackVersions(projectId);
+    const version = versions.find(item => item.id === versionId);
+    if (!version || !allowedPackUrl(version.archive.url, MODRINTH_CDN)) {
+      throw new Error(t('Версия модпака недоступна'));
+    }
+    const work = fs.mkdtempSync(path.join(os.tmpdir(), 'aetermc-mrpack-'));
+    const archive = path.join(work, 'pack.mrpack');
+    try {
+      const text = t('Скачивание модпака…');
+      let done = 0;
+      let lastReport = 0;
+      onProgress({ text });
+      await downloadPackFile({
+        path: version.archive.filename,
+        downloads: [version.archive.url],
+        hashes: version.archive.hashes
+      }, archive, bytes => {
+        done += bytes;
+        if (Date.now() - lastReport < 150) return;
+        lastReport = Date.now();
+        onProgress({ text, done, total: version.archive.size });
+      }, true);
+      return await this.importPack(archive, { onProgress, getJava, online: true });
+    } finally {
+      fs.rmSync(work, { recursive: true, force: true });
+    }
+  }
+
   /** What a pack holds, for the import window, before anything is downloaded. */
   inspect(file) {
     const zip = openZip(file);
@@ -194,11 +248,14 @@ class MrpackManager {
    * onProgress({ text, done, total }): done/total in bytes while downloading, otherwise only text.
    * getJava(minecraftVersion) gives Java for the Forge/NeoForge installer. A failed import leaves no build behind.
    */
-  async importPack(file, { name = '', onProgress = () => {}, getJava } = {}) {
+  async importPack(file, { name = '', onProgress = () => {}, getJava, online = false } = {}) {
     const zip = openZip(file);
     const index = readIndex(zip);
     const info = describe(file, zip, index);
     const files = clientFiles(index);
+    if (online && (!validVersion(info.minecraft) || (info.loaderVersion && !validVersion(info.loaderVersion)))) {
+      throw new Error(t('В архиве сборки указана недопустимая версия игры или загрузчика'));
+    }
 
     // A broken or hostile path fails the import before anything is downloaded
     const probe = path.join(this.instancesManager.instancesDir, '_');
@@ -222,30 +279,33 @@ class MrpackManager {
       loaderVersion = installed.loaderVersion;
     }
 
-    const inst = await this.instancesManager.createInstance({
-      name: name.trim() || info.name,
-      version: info.minecraft,
-      loader: info.loader,
-      loaderVersion,
-      versionId
-    });
+    const instances = this.instancesManager;
+    const work = fs.mkdtempSync(path.join(path.dirname(instances.instancesDir), '.instance-mrpack-'));
     try {
-      await this.downloadFiles(files, inst.minecraftDir, onProgress);
+      const inst = await instances.createInstance({
+        name: name.trim() || info.name,
+        version: info.minecraft,
+        loader: info.loader,
+        loaderVersion,
+        versionId
+      }, work);
+      await this.downloadFiles(files, inst.minecraftDir, onProgress, online);
       const overrides = overrideEntries(zip);
       overrides.forEach((entry, i) => {
         const dest = insideDir(inst.minecraftDir, overridePath(entry.entryName));
         fs.mkdirSync(path.dirname(dest), { recursive: true });
-        fs.writeFileSync(dest, entry.getData());
+        fs.writeFileSync(dest, checkedEntry(entry));
         if (i % 20 === 0) onProgress({ text: t('Распаковка файлов: {n} из {total}', { n: i + 1, total: overrides.length }) });
       });
-    } catch (e) {
-      fs.rmSync(inst.path, { recursive: true, force: true });
-      throw e;
+      const dest = path.join(instances.instancesDir, inst.id);
+      fs.renameSync(inst.path, dest);
+      return instances.readInstance(dest);
+    } finally {
+      fs.rmSync(work, { recursive: true, force: true });
     }
-    return this.instancesManager.readInstance(inst.path);
   }
 
-  async downloadFiles(files, dir, onProgress) {
+  async downloadFiles(files, dir, onProgress, online) {
     const total = files.reduce((sum, f) => sum + (Number(f.fileSize) || 0), 0);
     let done = 0;
     let count = 0;
@@ -260,7 +320,7 @@ class MrpackManager {
       await downloadPackFile(f, insideDir(dir, f.path), (bytes) => {
         done += bytes;
         report();
-      });
+      }, online);
       count++;
       report();
     });
@@ -389,5 +449,7 @@ class MrpackManager {
 module.exports = {
   MrpackManager,
   insideDir,
+  openZip,
+  validVersion,
   packLoader
 };

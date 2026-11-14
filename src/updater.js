@@ -33,11 +33,12 @@ function requestError(e) {
 class Updater {
   /**
    * resourcesDir: folder with app.asar; exePath: what to start after the swap;
-   * portable: started by the portable stub; enabled: false when run from the sources;
+   * portable: started by the portable stub; enabled: false when self-update is unavailable;
+   * packageManaged: installed by a Linux package manager, which owns updates;
    * onChange(state) on every state change.
    * feedUrl, assetUrl(version, file), releasesUrl and uninstallKey point elsewhere in tests.
    */
-  constructor({ currentVersion, electronVersion, resourcesDir, exePath, portable, enabled = true, onChange, feedUrl, assetUrl, releasesUrl, uninstallKey }) {
+  constructor({ currentVersion, electronVersion, resourcesDir, exePath, portable, enabled = true, packageManaged = false, onChange, feedUrl, assetUrl, releasesUrl, uninstallKey }) {
     this.currentVersion = currentVersion;
     this.electronVersion = electronVersion;
     this.asarPath = path.join(resourcesDir, 'app.asar');
@@ -57,7 +58,8 @@ class Updater {
     this.state = {
       status: 'idle',
       current: currentVersion,
-      enabled,
+      enabled: enabled && !packageManaged,
+      reason: packageManaged ? 'package-manager' : null,
       releasesPage: `https://github.com/${REPO}/releases`,
       checking: false,
       checkedAt: null,

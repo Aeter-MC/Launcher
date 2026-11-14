@@ -4,7 +4,7 @@
  */
 
 // AeterMC-Setup.exe and `AeterMC.exe --uninstall` are this same app in installer mode
-// Its code lives in installer/src and is packed into the app as src/installer
+// In the source tree the installer lives under installer/src.
 const installerDir = require('fs').existsSync(require('path').join(__dirname, 'installer'))
   ? './installer'
   : '../installer/src';
@@ -22,6 +22,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, nativeImage, cl
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { acquireLaunchLock } = require('./launch-utils');
 
 const { SettingsManager, DEFAULT_MINECRAFT_DIR } = require('./settings-manager');
 const i18n = require('./i18n/i18n');
@@ -32,10 +33,11 @@ const { detectJavaInstallations, pickJavaFor, checkJavaPath } = require('./java-
 const { DiscordPresence } = require('./discord-rpc');
 const { LauncherCore } = require('./launcher-core');
 const { AccountsManager } = require('./accounts-manager');
-const { InstancesManager } = require('./instances-manager');
+const { InstancesManager, resolveLaunchSettings } = require('./instances-manager');
 const { ModrinthManager } = require('./modrinth-manager');
 const { MrpackManager } = require('./mrpack');
 const { exportPrism } = require('./prism-export');
+const { inspectInstanceZip, importInstanceZip } = require('./prism-import');
 const { checkBuild } = require('./mod-check');
 const { scanModsDir } = require('./mod-meta');
 const { analyzeCrash } = require('./crash-analyzer');
@@ -48,7 +50,17 @@ const optionsSync = require('./options-sync');
 const { describeChange } = require('./options-labels');
 const { DiskCache } = require('./disk-cache');
 const { PlaytimeLog } = require('./playtime-log');
+const { readNativePlaytime, withNativePlaytime } = require('./native-v2-playtime');
 const { Updater } = require('./updater');
+const { isPackageManagerInstall } = require('./installation');
+const isAppImage = process.platform === 'linux' && !!process.env.APPIMAGE;
+const packageManaged = isPackageManagerInstall({
+  platform: process.platform,
+  appImage: isAppImage,
+  isPackaged: app.isPackaged,
+  distribution: require('../package.json').distribution,
+  appPath: app.getAppPath()
+});
 const screenshots = require('./screenshots');
 const https = require('https');
 const axios = require('axios');
@@ -63,6 +75,7 @@ app.disableHardwareAcceleration();
 app.setAppUserModelId('dev.aetermc.launcher');
 
 let mainWindow = null;
+let mainWindowNativeTitlebar = false;
 let consoleWindow = null;
 
 // Theme list generated from design/themes by `npm run tokens`
@@ -86,7 +99,7 @@ function reloadWindows() {
   const theme = currentTheme();
   const query = { theme: theme ? theme.id : '', lang: i18n.language() };
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { ...query, page: 'settings' } });
+    mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: { ...query, page: 'settings', nativeTitlebar: String(mainWindowNativeTitlebar) } });
   }
   if (consoleWindow && !consoleWindow.isDestroyed()) {
     consoleWindow.setTitle(t('Консоль — AeterMC'));
@@ -106,7 +119,6 @@ function applyThemeToWindows() {
     }
   }
 }
-// Same folder for `npm start` and the installed .exe (see data-dir.js)
 app.setPath('userData', require('./data-dir').DATA_DIR);
 const userDataDir = app.getPath('userData');
 
@@ -134,8 +146,9 @@ const updater = new Updater({
   resourcesDir: process.resourcesPath,
   exePath: app.getPath('exe'),
   portable: !!process.env.PORTABLE_EXECUTABLE_FILE,
-  // only a built launcher updates itself; `npm start` runs from the sources
-  enabled: app.isPackaged,
+  // The in-place updater uses Windows tooling.
+  enabled: (app.isPackaged && process.platform === 'win32') || isAppImage,
+  packageManaged,
   onChange: (state) => sendToWindow('update-state', state)
 });
 
@@ -204,12 +217,14 @@ function showDiscordPresence(inst, versionLabel) {
 }
 
 function createWindow() {
+  mainWindowNativeTitlebar = settingsManager.get().nativeTitlebar === true;
   mainWindow = new BrowserWindow({
     width: 1140,
     height: 740,
     minWidth: 980,
     minHeight: 640,
-    frame: false,
+    frame: mainWindowNativeTitlebar,
+    autoHideMenuBar: mainWindowNativeTitlebar,
     backgroundColor: currentTheme() ? currentTheme().preview.bg : '#111214',
     show: false,
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
@@ -223,7 +238,11 @@ function createWindow() {
   const theme = currentTheme();
   if (theme) nativeTheme.themeSource = theme.mode;
   // `AeterMC.exe --setup` (or `npm start -- --setup`) opens the first-run setup again
-  const query = { theme: theme ? theme.id : '', lang: i18n.language() };
+  const query = {
+    theme: theme ? theme.id : '',
+    lang: i18n.language(),
+    nativeTitlebar: String(mainWindowNativeTitlebar)
+  };
   if (process.argv.includes('--setup')) query.setup = '1';
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query });
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -310,12 +329,12 @@ ipcMain.handle('console-set-on-top', (event, onTop) => {
   if (consoleWindow && !consoleWindow.isDestroyed()) consoleWindow.setAlwaysOnTop(!!onTop);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   applyLanguage();
+  instancesManager.migrateLegacyInstances();
   createWindow();
 
-  // Only a built launcher updates itself; `npm start` runs from the sources
-  if (app.isPackaged) {
+  if (updater.state.enabled) {
     setTimeout(checkForUpdate, 5000);
     setInterval(checkForUpdate, 6 * 60 * 60 * 1000);
   }
@@ -466,7 +485,8 @@ ipcMain.handle('prism-import', async (event, keys) => {
 
 // Instances (MCL & Prism Launcher)
 ipcMain.handle('list-instances', () => {
-  return instancesManager.listInstances();
+  const instances = instancesManager.listInstances();
+  return withNativePlaytime(instances, readNativePlaytime(userDataDir).totals);
 });
 
 // The loader is installed before the build folder appears, so a failed install leaves nothing behind
@@ -530,9 +550,9 @@ function devSamplesOrThrow() {
 /** Runs the real analyzer and opens the crash window as after a real crash. */
 function showDevCrash(instanceId, input) {
   const inst = instanceId ? instancesManager.listInstances().find(i => i.id === instanceId) : null;
-  const opt = { ...settingsManager.get(), ...((inst && inst.launch) || {}) };
+  const opt = resolveLaunchSettings(settingsManager.get(), inst);
   const analysis = analyzeCrash({
-    jars: inst && inst.loader !== 'vanilla' ? scanModsDir(inst.modsDir) : [],
+    jars: inst.loader !== 'vanilla' ? scanModsDir(inst.modsDir) : [],
     maxRam: opt.maxRam || 4, javaMajor: 17, ...input
   });
   lastCrashReport = analysis.reportFile;
@@ -593,6 +613,12 @@ ipcMain.handle('delete-instance-mod', (event, instanceId, fileName, kind = 'mod'
 // Modrinth modpacks (.mrpack)
 ipcMain.handle('mrpack-inspect', (event, file) => mrpackManager.inspect(file));
 
+ipcMain.handle('instance-zip-inspect', (event, file) => inspectInstanceZip(file));
+ipcMain.handle('instance-zip-import', (event, file, name) => importInstanceZip(file, instancesManager, {
+  name: String(name || ''),
+  onProgress: (p) => sendToWindow('mrpack-progress', p)
+}));
+
 ipcMain.handle('mrpack-import', async (event, file, name) => {
   return await mrpackManager.importPack(file, {
     name: String(name || ''),
@@ -600,6 +626,20 @@ ipcMain.handle('mrpack-import', async (event, file, name) => {
     getJava: (version) => javaForVersion(version)
   });
 });
+
+ipcMain.handle('modrinth-project-preview', (event, projectId) => modrinthManager.getProjectPreview(projectId));
+
+ipcMain.handle('modrinth-pack-versions', async (event, projectId) => {
+  const versions = await modrinthManager.getModpackVersions(projectId);
+  return versions.map(({ id, name, version_number, version_type, game_versions, loaders }) => ({
+    id, name, version_number, version_type, game_versions, loaders
+  }));
+});
+
+ipcMain.handle('modrinth-pack-install', (event, projectId, versionId) => mrpackManager.installModrinthPack(projectId, versionId, {
+  onProgress: (p) => event.sender.isDestroyed() || event.sender.send('modrinth-pack-progress', p),
+  getJava: (version) => javaForVersion(version)
+}));
 
 function findInstanceOrThrow(instanceId) {
   const inst = instancesManager.listInstances().find(i => i.id === instanceId);
@@ -829,7 +869,11 @@ ipcMain.handle('open-folder', async (event, type) => {
 });
 
 // Weekly playtime chart on the home page
-ipcMain.handle('get-playtime-days', () => playtimeLog.read());
+ipcMain.handle('get-playtime-days', () => {
+  const days = playtimeLog.read();
+  for (const [day, seconds] of Object.entries(readNativePlaytime(userDataDir).days)) days[day] = (Number(days[day]) || 0) + seconds;
+  return days;
+});
 
 // Screenshots page
 function currentScreenshotSources() {
@@ -920,64 +964,103 @@ function sendToWindow(channel, data) {
 
 // true for the whole launch, including loader/Java preparation before launcherCore starts
 let launchInProgress = false;
+let preparingShortcut = false;
+const pendingShortcuts = new Map();
 let runningInstanceId = null; // build the running game was started from
 let killedByUser = false; // "Stop" in the launcher is not a crash
 
-ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
+ipcMain.handle('create-instance-shortcut', async (event, id, iconDataUrl) => {
+  const instance = instancesManager.listInstances().find(i => i.id === id);
+  if (!instance) throw new Error(t('Сборка не найдена'));
+  if (process.platform !== 'win32') throw new Error(t('Ярлыки сборок пока доступны только в Windows'));
+  if (!['microsoft', 'offline'].includes(accountsManager.getActiveAccount()?.type)) {
+    throw new Error(t('Для ярлыка выберите аккаунт Microsoft или офлайн-аккаунт.'));
+  }
+  const pending = pendingShortcuts.get(id);
+  if (pending) return pending;
+  const creation = createNativeV2Shortcut(id, instance, iconDataUrl);
+  pendingShortcuts.set(id, creation);
+  try {
+    return await creation;
+  } finally {
+    pendingShortcuts.delete(id);
+  }
+});
+
+async function createNativeV2Shortcut(id, instance, iconDataUrl) {
+  const v2 = require('./native-v2');
+  const runner = v2.runnerPath(app);
+  if (!fs.existsSync(runner)) throw new Error('Build Native V2 with npm run native:v2 before creating a shortcut');
+  const prepared = await launchGame({ instanceId: id }, { prepareOnly: true });
+  if (!prepared.success) {
+    const issues = prepared.modIssues?.filter(issue => issue.level === 'error').map(issue => issue.text);
+    throw new Error(prepared.error || issues?.join('\n') || 'Minecraft preparation failed');
+  }
+  const profile = userDataDir;
+  const payload = v2.makeProvision({
+    command: prepared.command, account: prepared.account, instance,
+    root: settingsManager.get().gameDir, profile,
+    settingsPath: settingsManager.filePath, accountsPath: accountsManager.filePath,
+    customVersion: prepared.customVersion, appVersion: app.getVersion(),
+    rpcEnabled: settingsManager.get().discordPresence !== false
+  });
+  await v2.provision({ runner, profile, payload });
+  return require('./native-v2-shortcuts').createShortcutV2({ app, shell, nativeImage, instance, iconDataUrl, runner, profile });
+}
+
+ipcMain.handle('launch-game', (event, launchOpts = {}) => launchGame(launchOpts));
+
+async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
+  if (preparingShortcut) return { success: false, error: t('Дождитесь создания ярлыка сборки.') };
+  if (launchInProgress || launcherCore.isLaunching) return { success: false, error: t('Minecraft готовится к запуску. Подождите.') };
+  if (launcherCore.isRunning) return { success: false, error: t('Игра уже запущена!') };
+  const id = launchOpts?.instanceId;
+  const inst = id && instancesManager.listInstances().find(i => i.id === id);
+  if (!inst) return { success: false, error: t('Сборка не найдена') };
+
   const settings = settingsManager.get();
   const root = settings.gameDir || DEFAULT_MINECRAFT_DIR;
   const log = (type, message) => emitLog({ type, message });
 
-  launchInProgress = true;
+  if (prepareOnly) preparingShortcut = true;
+  else launchInProgress = true;
+  let releaseLock = null;
+  let transferred = false;
   try {
+    // Versions, libraries and assets are shared in root; saves/mods are per instance.
+    const instanceId = inst.id;
+    const gameDir = inst.minecraftDir;
+    const versionNumber = inst.version;
+    let customVersion = null;
+    releaseLock = acquireLaunchLock(gameDir);
     const account = await accountsManager.getLaunchAccount((text) => log('warn', `[AUTH]: ${text}`));
 
-    // Work out which version to start and where the game files live.
-    // Versions, libraries and assets are shared in root; saves/mods are per instance.
-    let gameDir = root;
-    let versionNumber;
-    let customVersion = null;
-    let instanceId = null;
-    let inst = null;
-
-    if (launchOpts.instanceId) {
-      inst = instancesManager.listInstances().find(i => i.id === launchOpts.instanceId);
-      if (!inst) throw new Error(t('Сборка не найдена'));
-      instanceId = inst.id;
-      gameDir = inst.minecraftDir;
-      versionNumber = inst.version;
-
-      // mods that will not start together: asked before anything is downloaded or started
-      if (inst.loader !== 'vanilla') {
-        const check = checkBuild(inst);
-        check.issues.filter(i => i.level === 'warn').forEach(i => log('warn', `[MODS]: ${i.text}`));
-        const errors = check.issues.filter(i => i.level === 'error');
-        if (errors.length && !launchOpts.ignoreModIssues) {
-          errors.forEach(i => log('warn', `[MODS]: ${i.text}`));
-          return { success: false, modIssues: check.issues, instanceId: inst.id };
-        }
+    // mods that will not start together: asked before anything is downloaded or started
+    if (inst.loader !== 'vanilla') {
+      const check = checkBuild(inst);
+      check.issues.filter(i => i.level === 'warn').forEach(i => log('warn', `[MODS]: ${i.text}`));
+      const errors = check.issues.filter(i => i.level === 'error');
+      if (errors.length && !launchOpts.ignoreModIssues) {
+        errors.forEach(i => log('warn', `[MODS]: ${i.text}`));
+        return { success: false, modIssues: check.issues, instanceId: inst.id };
       }
+    }
 
-      if (inst.loader !== 'vanilla') {
-        // installed when the build was made; builds from Prism or a cleaned versions/ get it now
-        log('info', `[LAUNCHER]: ${t('Подготовка {loader} {version} для {mc}', { loader: LoaderManager.label(inst.loader), version: inst.loaderVersion || '', mc: inst.version })}`);
-        const profile = await loaderManager.ensure(inst.loader, inst.version, inst.loaderVersion, {
-          knownId: inst.versionId,
-          onStatus: (text, { progress } = {}) => { if (!progress) log('info', `[LAUNCHER]: ${text}`); },
-          getJava: () => javaForVersion(inst.version, log)
-        });
-        customVersion = profile.id;
-      }
-    } else {
-      const resolved = versionManager.resolveLaunchVersion(launchOpts.version || settings.selectedVersion || '1.21.1');
-      versionNumber = resolved.number;
-      customVersion = resolved.custom;
+    if (inst.loader !== 'vanilla') {
+      // installed when the build was made; builds from Prism or a cleaned versions/ get it now
+      log('info', `[LAUNCHER]: ${t('Подготовка {loader} {version} для {mc}', { loader: LoaderManager.label(inst.loader), version: inst.loaderVersion || '', mc: inst.version })}`);
+      const profile = await loaderManager.ensure(inst.loader, inst.version, inst.loaderVersion, {
+        knownId: inst.versionId,
+        onStatus: (text, { progress } = {}) => { if (!progress) log('info', `[LAUNCHER]: ${text}`); },
+        getJava: () => javaForVersion(inst.version, log)
+      });
+      customVersion = profile.id;
     }
 
     // the build's own launch settings over the launcher ones (see instances-manager.js LAUNCH_KEYS)
-    const own = (inst && inst.launch) || {};
+    const own = inst.launch || {};
     if (Object.keys(own).length) log('info', `[LAUNCHER]: ${t('У сборки свои настройки запуска')}`);
-    const opt = { ...settings, ...own };
+    const opt = resolveLaunchSettings(settings, inst);
 
     // Java: explicit choice from the build or settings, otherwise the one matching the version
     const javaPath = opt.javaPath || await javaForVersion(customVersion || versionNumber, log);
@@ -990,7 +1073,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
     const output = [];
     killedByUser = false;
 
-    await launcherCore.launch(
+    const command = await launcherCore.launch(
       {
         account,
         root,
@@ -1008,7 +1091,8 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
         resolutionWidth: opt.resolutionWidth || 1280,
         resolutionHeight: opt.resolutionHeight || 720,
         fullscreen: opt.fullscreen || false,
-        elyByManager
+        elyByManager,
+        prepareOnly
       },
       {
         onProgress: (progressData) => sendToWindow('launch-progress', progressData),
@@ -1020,7 +1104,8 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
           emitLog(logData);
         },
         onLaunched: () => {
-          if (instanceId) instancesManager.markLaunched(instanceId);
+          transferred = true;
+          instancesManager.markLaunched(instanceId);
           runningInstanceId = instanceId;
           sendToWindow('game-launched', instanceId);
           showDiscordPresence(inst, customVersion || versionNumber);
@@ -1032,6 +1117,8 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
           }
         },
         onClose: (code, durationSeconds) => {
+          if (prepareOnly) return;
+          if (releaseLock) releaseLock();
           runningInstanceId = null;
           discord.clear();
           // a crash: an error exit code, or a crash report written during the session
@@ -1039,7 +1126,7 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
             try {
               const analysis = analyzeCrash({
                 gameDir, since: sessionStart, output, exitCode: code,
-                jars: inst && inst.loader !== 'vanilla' ? scanModsDir(inst.modsDir) : [],
+                jars: inst.loader !== 'vanilla' ? scanModsDir(inst.modsDir) : [],
                 maxRam: opt.maxRam || 4, javaMajor
               });
               if ((code !== 0 && code !== null) || analysis.reportFile) {
@@ -1065,14 +1152,17 @@ ipcMain.handle('launch-game', async (event, launchOpts = {}) => {
       }
     );
 
+    if (prepareOnly) return { success: true, command, account, customVersion };
     return { success: true };
   } catch (err) {
-    sendToWindow('launch-error', err.message);
+    if (!prepareOnly) sendToWindow('launch-error', err.message);
     return { success: false, error: err.message };
   } finally {
-    launchInProgress = false;
+    if (!transferred && releaseLock) releaseLock();
+    if (prepareOnly) preparingShortcut = false;
+    else launchInProgress = false;
   }
-});
+}
 
 // lets a reloaded window (Ctrl+R) pick up a game that is still starting or running
 ipcMain.handle('get-game-state', () => ({
@@ -1087,7 +1177,7 @@ ipcMain.handle('update-check', () => checkForUpdate());
 ipcMain.handle('update-releases', () => updater.releases());
 ipcMain.handle('update-download', () => updater.download());
 ipcMain.handle('update-restart', () => {
-  if (launchInProgress || launcherCore.isRunning || launcherCore.isLaunching) {
+  if (preparingShortcut || pendingShortcuts.size || launchInProgress || launcherCore.isRunning || launcherCore.isLaunching) {
     throw new Error(t('Сначала закройте игру: лаунчер перезапустится для обновления'));
   }
   if (!updater.startSwap(true)) return false;

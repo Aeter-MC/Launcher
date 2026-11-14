@@ -1,7 +1,7 @@
 /**
  * build.js — `npm run build`
  * Builds two files into dist/:
- *   AeterMC-Setup-<version>.exe     — the installer in the launcher's style (installer/)
+ *   AeterMC-Setup-<version>.exe     — the installer in the launcher's style
  *   AeterMC-<version>-portable.exe  — the launcher without installation
  * Both are electron-builder "portable" packages of the same app; the setup one carries
  * `aeterSetup: true` in its package.json, which makes main.js open the installer window.
@@ -15,10 +15,12 @@
 const fs = require('fs');
 const path = require('path');
 const builder = require('electron-builder');
+const asar = require('@electron/asar');
 const { Platform, Arch } = builder;
 
 const root = path.join(__dirname, '..');
 const setupOnly = process.argv.includes('--setup-only');
+const copyToWorkspace = !process.argv.includes('--no-workspace-copy');
 const INSTALLER = path.join(root, 'installer');
 const SPLASH = path.join(INSTALLER, 'build', 'splash.exe');
 
@@ -39,7 +41,19 @@ async function build(config, portableTemplate) {
   }
   try {
     // releases are published by .github/workflows/release.yml, never by electron-builder itself
-    await builder.build({ targets: Platform.WINDOWS.createTarget(['portable'], Arch.x64), config, publish: 'never' });
+    await builder.build({ targets: Platform.WINDOWS.createTarget(['portable'], Arch.x64), config: {
+      ...config,
+      afterPack({ appOutDir }) {
+        const archive = path.join(appOutDir, 'resources', 'app.asar');
+        for (const name of ['AeterNative.exe', 'aeter-bootstrap.jar']) {
+          const internal = path.join('src', 'native-v2-runtime', name);
+          const expected = fs.readFileSync(path.join(root, 'native', 'v2', 'bin', name));
+          const actual = asar.extractFile(archive, internal);
+          if (!actual.equals(expected)) throw new Error(`Packaged Native V2 runtime differs from the build: ${name}`);
+        }
+        console.log('Verified Native V2 runtime in app.asar');
+      }
+    }, publish: 'never' });
   } finally {
     fse.readFile = readFile;
   }
@@ -47,6 +61,7 @@ async function build(config, portableTemplate) {
 }
 
 (async () => {
+  require('child_process').execFileSync(process.execPath, [path.join(__dirname, 'build-native-v2.js'), '--release-only'], { stdio: 'inherit' });
   if (!fs.existsSync(SPLASH)) throw new Error('installer/build/splash.exe is missing: run `npm run splash`');
   const template = fs.readFileSync(path.join(INSTALLER, 'splash', 'portable-setup.nsi'), 'utf8')
     .replace('@AETER_SPLASH@', SPLASH);
@@ -54,14 +69,16 @@ async function build(config, portableTemplate) {
     extraMetadata: { aeterSetup: true },
     portable: { artifactName: 'AeterMC-Setup-${version}.${ext}' }
   }, template);
-  // the installer also goes to the project root, where it is uploaded from
-  const name = `AeterMC-Setup-${require('../package.json').version}.exe`;
-  const workspace = root;
-  for (const old of fs.readdirSync(workspace)) {
-    if (/^AeterMC-Setup-.*\.exe$/.test(old) && old !== name) fs.rmSync(path.join(workspace, old));
+  // the installer also goes to the root of the workspace (next to mcl/), where it is uploaded from
+  if (copyToWorkspace) {
+    const name = `AeterMC-Setup-${require('../package.json').version}.exe`;
+    const workspace = path.join(root, '..');
+    for (const old of fs.readdirSync(workspace)) {
+      if (/^AeterMC-Setup-.*\.exe$/.test(old) && old !== name) fs.rmSync(path.join(workspace, old));
+    }
+    fs.copyFileSync(path.join(root, 'dist', name), path.join(workspace, name));
+    console.log(`  • copied          ${name} → ${workspace}`);
   }
-  fs.copyFileSync(path.join(root, 'dist', name), path.join(workspace, name));
-  console.log(`  • copied          ${name} → ${workspace}`);
   if (!setupOnly) await build({});
 })().catch((e) => {
   console.error(e);

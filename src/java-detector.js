@@ -1,10 +1,13 @@
 /**
  * java-detector.js
- * Scans Windows directories and system registry/PATH to locate installed Java JDK/JRE runtimes.
+ * Locates installed Java JDK/JRE runtimes.
  */
 const fs = require('fs');
 const path = require('path');
-const { execSync, exec } = require('child_process');
+const os = require('os');
+const { execFileSync, execFile } = require('child_process');
+
+const JAVA_BINARY = process.platform === 'win32' ? 'java.exe' : 'java';
 
 function checkJavaPath(exePath) {
   return new Promise((resolve) => {
@@ -12,7 +15,8 @@ function checkJavaPath(exePath) {
       return resolve(null);
     }
 
-    exec(`"${exePath}" -version`, { timeout: 5000, windowsHide: true }, (error, stdout, stderr) => {
+    execFile(exePath, ['-version'], { timeout: 5000, windowsHide: true }, (error, stdout, stderr) => {
+      if (error) return resolve(null);
       const output = (stderr || stdout || '').toString();
       if (!output) {
         return resolve({
@@ -49,7 +53,7 @@ function checkJavaPath(exePath) {
 }
 
 /**
- * Recursively looks for bin/java.exe under a folder (limited depth).
+ * Recursively looks for the Java executable in bin/ under a folder (limited depth).
  */
 function scanForJava(dir, depth, found) {
   if (depth < 0) return;
@@ -59,7 +63,7 @@ function scanForJava(dir, depth, found) {
   } catch (e) {
     return;
   }
-  const exe = path.join(dir, 'bin', 'java.exe');
+  const exe = path.join(dir, 'bin', JAVA_BINARY);
   if (fs.existsSync(exe)) {
     found.add(exe);
     return;
@@ -73,13 +77,13 @@ function scanForJava(dir, depth, found) {
 
 /**
  * cache: optional DiskCache. Running `java -version` is the slow part, so its result is reused
- * while java.exe itself has not changed (same size and modification time).
+ * while the executable has not changed (same size and modification time).
  */
 async function detectJavaInstallations(extraRoots = [], cache = null) {
   const foundPaths = new Set();
   const pf = process.env.ProgramFiles || 'C:\\Program Files';
   const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-  const searchRoots = [
+  const searchRoots = process.platform === 'win32' ? [
     path.join(pf, 'Eclipse Adoptium'),
     path.join(pf, 'Java'),
     path.join(pf, 'BellSoft'),
@@ -90,23 +94,33 @@ async function detectJavaInstallations(extraRoots = [], cache = null) {
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Eclipse Adoptium'),
     path.join(process.env.APPDATA || '', '.minecraft', 'runtime'),
     path.join(process.env.APPDATA || '', 'PrismLauncher', 'java'),
-    ...extraRoots
-  ];
+  ] : ['/usr/lib/jvm', '/usr/lib64/jvm', path.join(os.homedir(), '.minecraft', 'runtime')];
+  searchRoots.push(...extraRoots);
 
   for (const root of searchRoots) {
     if (root && fs.existsSync(root)) scanForJava(root, 4, foundPaths);
   }
 
-  try {
-    const whereOutput = execSync('where java', { encoding: 'utf-8', timeout: 2000, windowsHide: true }).trim().split(/\r?\n/);
-    for (const p of whereOutput) {
-      // Skip Oracle's javapath shim, it just redirects to a real install
-      if (p && fs.existsSync(p) && !/javapath/i.test(p)) foundPaths.add(p);
+  if (process.platform === 'win32') {
+    try {
+      const output = execFileSync('where.exe', ['java'], { encoding: 'utf-8', timeout: 2000, windowsHide: true });
+      for (const candidate of output.trim().split(/\r?\n/)) {
+        // Skip Oracle's javapath shim, which redirects to a real install.
+        if (candidate && fs.existsSync(candidate) && !/javapath/i.test(candidate)) foundPaths.add(candidate);
+      }
+    } catch (e) {}
+  } else {
+    for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+      try {
+        const candidate = fs.realpathSync(path.resolve(dir, JAVA_BINARY));
+        fs.accessSync(candidate, fs.constants.X_OK);
+        foundPaths.add(candidate);
+      } catch (e) {}
     }
-  } catch (e) {}
+  }
 
   if (process.env.JAVA_HOME) {
-    const homeExe = path.join(process.env.JAVA_HOME, 'bin', 'java.exe');
+    const homeExe = path.join(process.env.JAVA_HOME, 'bin', JAVA_BINARY);
     if (fs.existsSync(homeExe)) foundPaths.add(homeExe);
   }
 
@@ -146,5 +160,6 @@ function pickJavaFor(list, requiredMajor) {
 module.exports = {
   detectJavaInstallations,
   checkJavaPath,
-  pickJavaFor
+  pickJavaFor,
+  JAVA_BINARY
 };

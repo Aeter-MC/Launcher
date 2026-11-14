@@ -166,6 +166,35 @@ function instanceIconHtml(inst) {
   return blockIconHtml(BLOCKS.find(b => b.name === inst.iconBlock) || autoBlock(inst));
 }
 
+/** Export the same custom image or themed block that the instance card shows. */
+async function instanceShortcutIcon(inst) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  let source = inst.iconImage;
+  if (!source) {
+    const block = BLOCKS.find(b => b.name === inst.iconBlock) || autoBlock(inst);
+    const style = getComputedStyle(document.documentElement);
+    const svg = blockSvg(block)
+      .replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" ')
+      .replace(/var\((--[\w-]+)\)/g, (_, token) => style.getPropertyValue(token).trim());
+    source = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    ctx.fillStyle = style.getPropertyValue(`--color-block-${block.name}-tile`).trim();
+    ctx.fillRect(0, 0, 256, 256);
+  }
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error(t('Не удалось прочитать картинку')));
+    image.src = source;
+  });
+  ctx.imageSmoothingEnabled = image.naturalWidth >= 64;
+  const scale = Math.max(256 / image.naturalWidth, 256 / image.naturalHeight);
+  const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+  ctx.drawImage(image, (256 - width) / 2, (256 - height) / 2, width, height);
+  return canvas.toDataURL('image/png');
+}
+
 // Small (pixel-art) pictures stay crisp instead of being smeared when scaled up
 document.addEventListener('load', (e) => {
   const img = e.target;
@@ -199,10 +228,6 @@ function accountTypeLabel(type) {
 
 function findInstance(id) {
   return state.instances.find(i => i.id === id) || null;
-}
-
-function findVersion(id) {
-  return state.versions.find(v => v.id === id) || null;
 }
 
 /** The build whose mods page is open. */
@@ -267,6 +292,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupMods();
   setupPrismImport();
   setupMrpack();
+  setupNewInstanceMenu(setupModrinthPacks());
   setupSettings();
   setupLogs();
   setupScreenshots();
@@ -366,6 +392,7 @@ function renderUpdateButton() {
 
 /** One line about the update for the settings page. */
 function updateStatusText(u) {
+  if (u.reason === 'package-manager') return t('Лаунчер установлен через пакетный менеджер');
   if (u.status === 'available' || u.status === 'manual') return t('Доступна версия {version}', { version: u.version });
   if (u.status === 'downloading') return t('Скачивается версия {version}: {percent}', { version: u.version, percent: updatePercent(u) });
   if (u.status === 'ready') return t('Версия {version} установится при перезапуске', { version: u.version });
@@ -377,9 +404,10 @@ function updateStatusText(u) {
 
 function renderUpdateSettings() {
   const u = updateState;
+  $('update-auto-setting').classList.toggle('hidden', api.platform === 'linux' && !api.isAppImage);
   $('settings-update-label').textContent = `AeterMC ${u.current || ''}`;
   $('settings-update-hint').textContent = updateStatusText(u);
-  $('btn-open-update').textContent = u.status === 'idle' ? t('Проверить обновления') : t('Подробнее');
+  $('btn-open-update').textContent = u.status === 'idle' && u.reason !== 'package-manager' ? t('Проверить обновления') : t('Подробнее');
 }
 
 function renderUpdateMenu() {
@@ -387,7 +415,11 @@ function renderUpdateMenu() {
   const version = esc(u.version);
   const current = esc(u.current);
   let title, sub, action;
-  if (u.status === 'available') {
+  if (u.reason === 'package-manager') {
+    title = t('Лаунчер установлен через пакетный менеджер');
+    sub = t('Обновите лаунчер через свой пакетный менеджер');
+    action = { text: t('Закрыть'), run: () => closeModal($('modal-update')) };
+  } else if (u.status === 'available') {
     title = t('Доступна версия {version}', { version });
     sub = t('Сейчас установлена {version}', { version: current }) + (u.size ? ` · ${t('скачать {size}', { size: formatSize(u.size) })}` : '');
     action = { text: t('Скачать'), run: () => api.downloadUpdate() };
@@ -419,6 +451,7 @@ function renderUpdateMenu() {
   $('update-progress-fill').style.width = updatePercent(u);
   $('update-error').textContent = u.error || '';
   $('update-auto').checked = state.settings.autoUpdate !== false;
+  $('update-auto').closest('.update-auto').classList.toggle('hidden', u.reason === 'package-manager');
   const btn = $('update-action');
   btn.textContent = action.text;
   btn.disabled = !!action.disabled;
@@ -511,7 +544,7 @@ function setupUpdateButton() {
 // ================= NAVIGATION =================
 function showPage(name) {
   // A build's mods page lives under "Сборки"
-  const navTab = name === 'mods' ? 'instances' : name;
+  const navTab = ['mods', 'modrinth-packs'].includes(name) ? 'instances' : name;
   document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.tab === navTab));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${name}`));
   if (name === 'logs') {
@@ -591,12 +624,14 @@ function setupSegmented() {
 }
 
 function setupModals() {
+  $('modrinth-preview-close').addEventListener('click', closeModrinthPreview);
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn));
   });
   document.querySelectorAll('.modal').forEach(m => {
     m.addEventListener('mousedown', (e) => {
-      if (e.target === m && !['modal-dialog', 'modal-sync', 'modal-ms', 'modal-prism', 'modal-mrpack-import', 'modal-mrpack-export'].includes(m.id)) m.classList.add('hidden');
+      if (e.target === m && m.id === 'modal-modrinth-preview') closeModrinthPreview();
+      if (e.target === m && !['modal-dialog', 'modal-sync', 'modal-ms', 'modal-prism', 'modal-mrpack-import', 'modal-mrpack-export', 'modal-modrinth-preview'].includes(m.id)) m.classList.add('hidden');
     });
   });
   document.addEventListener('keydown', (e) => {
@@ -611,6 +646,7 @@ function setupModals() {
     else if (open.id === 'modal-sync') $('sync-close').click();
     else if (open.id === 'modal-ms') closeMicrosoftLogin();
     else if (open.id === 'modal-prism') $('prism-cancel').click();
+    else if (open.id === 'modal-modrinth-preview') $('modrinth-preview-close').click();
     else if (open.id === 'modal-mrpack-import') $('mrpack-import-cancel').click();
     else if (open.id === 'modal-mrpack-export') $('mrpack-export-cancel').click();
     else open.classList.add('hidden');
@@ -638,6 +674,9 @@ function activeAccount() {
 function renderAccountChip() {
   const acc = activeAccount();
   $('account-name').textContent = acc ? acc.username : t('Нет аккаунта');
+  $('account-session-expired').textContent = t('Сессия истекла');
+  $('account-session-expired').classList.toggle('hidden', !acc?.sessionExpired);
+  $('btn-open-accounts').title = acc?.sessionExpired ? t('Сессия Microsoft истекла. Войдите в аккаунт заново.') : '';
   $('account-type').textContent = acc ? accountTypeLabel(acc.type) : '';
   setAvatar($('account-avatar'), acc);
   renderGreeting();
@@ -656,11 +695,17 @@ function renderAccountList() {
       <div class="row-main">
         <span class="row-title">${esc(acc.username)}</span>
         <span class="badge ${badge}">${accountTypeLabel(acc.type)}</span>
+        ${acc.sessionExpired ? `<button type="button" class="badge badge-ms account-relogin">${t('Войти снова')}</button>` : ''}
       </div>
       ${isActive ? icon('check', 'account-check') : ''}
       ${state.accounts.length > 1 ? `<button class="icon-btn icon-btn-sm danger" title="${t('Удалить')}">${icon('trash', 'ic-sm')}</button>` : ''}
     `;
     setAvatar(row.querySelector('img'), acc);
+    row.querySelector('.account-relogin')?.addEventListener('click', event => {
+      event.stopPropagation();
+      closeModal($('modal-accounts'));
+      openMicrosoftLogin();
+    });
 
     row.addEventListener('click', async () => {
       if (isActive) return;
@@ -847,7 +892,8 @@ async function loadSettings() {
   $('check-fullscreen').checked = !!s.fullscreen;
   $('check-snapshots').checked = !!s.showSnapshots;
   $('check-prism').checked = s.prismImport === true;
-  $('check-show-console').checked = s.showConsole !== false;
+  $('check-show-console').checked = s.showConsole === true;
+  $('check-native-titlebar').checked = s.nativeTitlebar === true;
   $('check-auto-updates').checked = s.autoCheckModUpdates !== false;
   $('check-auto-update').checked = s.autoUpdate !== false;
   $('select-language').value = i18n.language();
@@ -931,6 +977,10 @@ function setupSettings() {
     if ($('check-auto-updates').checked) backgroundUpdateCheck();
   });
 
+  $('check-native-titlebar').addEventListener('change', () => saveSettings({
+    nativeTitlebar: $('check-native-titlebar').checked
+  }));
+
   $('check-show-console').addEventListener('change', async () => {
     await saveSettings({ showConsole: $('check-show-console').checked });
     applyConsoleVisibility();
@@ -949,7 +999,10 @@ function setupSettings() {
   });
 
   $('btn-browse-java').addEventListener('click', async () => {
-    const filePath = await api.browseFile({ title: t('Выберите java.exe'), filters: [{ name: 'Java', extensions: ['exe'] }] });
+    const filePath = await api.browseFile({
+      title: t('Выберите исполняемый файл Java'),
+      filters: api.platform === 'win32' ? [{ name: 'Java', extensions: ['exe'] }] : []
+    });
     if (!filePath) return;
     ensureJavaOption(filePath);
     $('select-java').value = filePath;
@@ -1108,29 +1161,39 @@ async function pickMrpack() {
   if (file) openMrpackImport(file);
 }
 
-async function openMrpackImport(file) {
+async function pickInstanceZip() {
+  const file = await api.browseFile({ title: t('Выберите архив сборки'), filters: [{ name: t('Архив сборки (.zip)'), extensions: ['zip'] }] });
+  if (file) openMrpackImport(file, { zip: true });
+}
+
+async function openMrpackImport(file, { zip = false } = {}) {
   if (mrpackUi.busy) {
     toast(t('Дождитесь окончания импорта'));
     return;
   }
   let info;
   try {
-    info = await api.inspectMrpack(file);
+    info = zip ? await api.inspectInstanceZip(file) : await api.inspectMrpack(file);
   } catch (e) {
     toast(errText(e), 'error', 6000);
     return;
   }
   mrpackUi.file = file;
+  mrpackUi.zip = zip;
+  $('mrpack-import-heading').textContent = zip ? t('Импорт сборки из ZIP') : t('Импорт модпака');
   $('mrpack-import-title').textContent = info.versionId ? `${info.name} ${info.versionId}` : info.name;
   $('mrpack-import-sub').textContent = info.loader === 'vanilla'
     ? `Minecraft ${info.minecraft}`
     : `${LOADER_LABELS[info.loader] || info.loader} ${info.loaderVersion} · Minecraft ${info.minecraft}`;
-  $('mrpack-import-desc').textContent = info.summary;
+  $('mrpack-import-desc').textContent = info.summary || '';
   $('mrpack-import-desc').classList.toggle('hidden', !info.summary);
   $('input-mrpack-name').value = info.name.slice(0, 48);
   const parts = [];
   if (info.downloadCount) parts.push(t('скачается с Modrinth: {files}, {size}', { files: pluralize(info.downloadCount, ['файл', 'файла', 'файлов']), size: formatSize(info.downloadBytes) }));
-  if (info.overrideCount) parts.push(t('в самом модпаке: {files}', { files: pluralize(info.overrideCount, ['файл', 'файла', 'файлов']) }));
+  if (info.overrideCount) {
+    const files = pluralize(info.overrideCount, ['файл', 'файла', 'файлов']);
+    parts.push(zip ? t('в архиве: {files}', { files }) : t('в самом модпаке: {files}', { files }));
+  }
   $('mrpack-import-files').textContent = parts.length ? parts.join(' · ').replace(/^./, c => c.toUpperCase()) : '';
   $('mrpack-import-progress').classList.add('hidden');
   $('mrpack-import-status').textContent = '';
@@ -1146,12 +1209,10 @@ async function startMrpackImport() {
   $('mrpack-import-progress').classList.remove('hidden');
   const off = api.onMrpackProgress((p) => setPackProgress('mrpack-import', p));
   try {
-    const inst = await api.importMrpack(mrpackUi.file, $('input-mrpack-name').value);
+    const importFile = mrpackUi.zip ? api.importInstanceZip : api.importMrpack;
+    const inst = await importFile(mrpackUi.file, $('input-mrpack-name').value);
     $('modal-mrpack-import').classList.add('hidden');
-    await loadVersionsAndInstances();
-    if (inst) selectProfile(inst.id);
-    showPage('instances');
-    toast(t('Сборка «{name}» создана', { name: inst ? inst.name : '' }));
+    await showImportedInstance(inst);
   } catch (e) {
     $('mrpack-import-progress').classList.add('hidden');
     $('mrpack-import-status').className = 'form-status error';
@@ -1274,10 +1335,6 @@ function setupMrpack() {
   document.querySelectorAll('#export-format-seg button').forEach(b => b.addEventListener('click', () => {
     if (!mrpackUi.busy) setExportFormat(b.dataset.exportFormat);
   }));
-  $('btn-import-instance').addEventListener('click', (e) => openMenu(e.currentTarget, [
-    { label: t('Модпак .mrpack…'), icon: 'box', run: pickMrpack },
-    { label: t('Из Prism Launcher…'), icon: 'transfer', run: openPrismImport }
-  ]));
   $('mrpack-import-start').addEventListener('click', startMrpackImport);
   $('input-mrpack-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') startMrpackImport(); });
   $('mrpack-export-start').addEventListener('click', startMrpackExport);
@@ -1294,6 +1351,193 @@ function setupMrpack() {
   $('mrpack-import-close').addEventListener('click', close('modal-mrpack-import'));
   $('mrpack-export-cancel').addEventListener('click', close('modal-mrpack-export'));
   $('mrpack-export-close').addEventListener('click', close('modal-mrpack-export'));
+}
+
+function setupModrinthPacks() {
+  const el = (part) => $(`modrinth-pack-${part}`);
+  const category = el('category');
+  category.add(new Option(t('Все категории'), ''));
+  for (const name of ['adventure', 'magic', 'optimization', 'technology']) {
+    category.add(new Option(CATEGORY_LABELS[name], name));
+  }
+  let offset = 0;
+  let limit = 20;
+  let token = 0;
+
+  async function search(pageOffset = 0) {
+    const request = ++token;
+    el('pages').classList.add('hidden');
+    const list = el('results');
+    list.innerHTML = catalogSkeleton();
+    try {
+      const result = await api.searchModrinth({
+        query: el('query').value.trim(),
+        kind: 'modpack',
+        category: category.value,
+        sortBy: el('sort').value,
+        offset: pageOffset
+      });
+      if (request !== token) return;
+      offset = result.offset;
+      limit = result.limit;
+      el('prev').disabled = offset === 0;
+      el('next').disabled = offset + limit >= result.totalHits;
+      el('pages').classList.toggle('hidden', el('prev').disabled && el('next').disabled);
+      list.replaceChildren(...result.hits.map(hit => modrinthCatalogRow(hit, 'box', 'modpack')));
+      if (!result.hits.length) list.innerHTML = `<div class="empty"><h3>${t('Модпаки не найдены')}</h3></div>`;
+    } catch (e) {
+      if (request === token) list.innerHTML = `<div class="empty"><h3>${t('Modrinth недоступен')}</h3><p>${esc(errText(e))}</p></div>`;
+    }
+  }
+
+  let timer;
+  el('query').addEventListener('input', () => {
+    clearTimeout(timer);
+    token++;
+    timer = setTimeout(search, 350);
+  });
+  for (const control of [category, el('sort')]) {
+    control.addEventListener('change', () => {
+      clearTimeout(timer);
+      search();
+    });
+  }
+  el('prev').addEventListener('click', () => search(Math.max(0, offset - limit)));
+  el('next').addEventListener('click', () => search(offset + limit));
+  el('back').addEventListener('click', () => showPage('instances'));
+  return () => {
+    if (mrpackUi.busy) return;
+    showPage('modrinth-packs');
+    el('query').focus();
+    clearTimeout(timer);
+    search();
+  };
+}
+
+let modrinthPreviewRequest = 0;
+function closeModrinthPreview() {
+  if ($('modrinth-pack-install').dataset.installing) return;
+  modrinthPreviewRequest++;
+  $('modal-modrinth-preview').classList.add('hidden');
+}
+
+function projectIcon(container, url, fallback) {
+  container.innerHTML = icon(fallback);
+  if (!url) return;
+  const img = new Image();
+  img.alt = '';
+  const placeholder = container.firstChild;
+  img.addEventListener('load', () => {
+    if (container.firstChild === placeholder) container.replaceChildren(img);
+  });
+  img.src = url;
+}
+
+function openModrinthPreview(hit, fallback, kind) {
+  const reqId = ++modrinthPreviewRequest;
+  const el = (part) => $(`modrinth-preview-${part}`);
+  projectIcon(el('icon'), hit.icon_url, fallback);
+  el('title').textContent = hit.title;
+  el('meta').textContent = [hit.author, t('{n} загрузок', { n: formatCount(hit.downloads || 0) })].filter(Boolean).join(' · ');
+  el('description').textContent = hit.description || '';
+  el('link').href = `https://modrinth.com/${kind}/${encodeURIComponent(hit.slug || hit.project_id)}`;
+  el('gallery').classList.add('hidden');
+  el('image').removeAttribute('src');
+  el('gallery-status').textContent = t('Загрузка галереи…');
+  const pack = kind === 'modpack';
+  el('pack').classList.toggle('hidden', !pack);
+  $('modrinth-pack-install').classList.toggle('hidden', !pack);
+  openModal('modal-modrinth-preview');
+  el('close').focus();
+  if (pack) prepareModrinthPackInstall(hit, reqId);
+
+  api.getModrinthProjectPreview(hit.project_id).then(({ gallery }) => {
+    if (reqId !== modrinthPreviewRequest) return;
+    const images = [...gallery].sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
+    if (!images.length) {
+      el('gallery-status').textContent = t('У проекта нет изображений');
+      return;
+    }
+    let index = 0;
+    function renderImage() {
+      const { url, title, description } = images[index];
+      el('gallery-status').textContent = '';
+      el('image').alt = title || hit.title;
+      el('image').src = url;
+      el('caption').textContent = [`${index + 1} / ${images.length}`, title, description].filter(Boolean).join(' · ');
+      el('prev').disabled = index === 0;
+      el('next').disabled = index === images.length - 1;
+    }
+    el('image').onerror = () => { el('gallery-status').textContent = t('Не удалось загрузить изображение'); };
+    el('prev').onclick = () => { index--; renderImage(); };
+    el('next').onclick = () => { index++; renderImage(); };
+    el('gallery').classList.remove('hidden');
+    renderImage();
+  }).catch(() => {
+    if (reqId === modrinthPreviewRequest) el('gallery-status').textContent = t('Не удалось загрузить галерею');
+  });
+}
+
+async function prepareModrinthPackInstall(hit, request) {
+  const versionSelect = $('modrinth-pack-version');
+  const install = $('modrinth-pack-install');
+  const status = $('modrinth-pack-status');
+  const progress = $('modrinth-pack-progress');
+  const close = $('modrinth-preview-close');
+  versionSelect.replaceChildren();
+  versionSelect.disabled = install.disabled = true;
+  status.classList.remove('error');
+  status.textContent = t('Загрузка версий модпака…');
+  try {
+    const versions = await api.getModrinthPackVersions(hit.project_id);
+    if (request !== modrinthPreviewRequest) return;
+    for (const version of versions) {
+      const details = [...(version.game_versions || []), ...(version.loaders || [])];
+      versionSelect.add(new Option([version.name || version.version_number, ...details].join(' · '), version.id));
+    }
+    const release = versions.find(version => version.version_type === 'release');
+    if (release) versionSelect.value = release.id;
+    versionSelect.disabled = install.disabled = !versions.length;
+    status.textContent = versions.length ? '' : t('У модпака нет доступных версий');
+  } catch (e) {
+    if (request !== modrinthPreviewRequest) return;
+    status.classList.add('error');
+    status.textContent = errText(e);
+    return;
+  }
+  install.onclick = async () => {
+    if (mrpackUi.busy || !versionSelect.value) return;
+    setPackBusy(true);
+    close.disabled = versionSelect.disabled = install.disabled = true;
+    install.dataset.installing = 'true';
+    status.classList.remove('error');
+    status.textContent = '';
+    setPackProgress('modrinth-pack', { text: t('Подготовка…') });
+    progress.classList.remove('hidden');
+    const off = api.onModrinthPackProgress(p => setPackProgress('modrinth-pack', p));
+    try {
+      const inst = await api.installModrinthPack(hit.project_id, versionSelect.value);
+      delete install.dataset.installing;
+      closeModrinthPreview();
+      await showImportedInstance(inst);
+    } catch (e) {
+      status.classList.add('error');
+      status.textContent = errText(e);
+    } finally {
+      off();
+      delete install.dataset.installing;
+      progress.classList.add('hidden');
+      close.disabled = versionSelect.disabled = install.disabled = false;
+      setPackBusy(false);
+    }
+  };
+}
+
+async function showImportedInstance(inst) {
+  await loadVersionsAndInstances();
+  if (inst) selectProfile(inst.id);
+  showPage('instances');
+  toast(t('Сборка «{name}» создана', { name: inst ? inst.name : '' }));
 }
 
 // ---------- themes ----------
@@ -1612,9 +1856,6 @@ async function loadVersionsAndInstances() {
   }
   state.instances = instancesRes.status === 'fulfilled' ? instancesRes.value : [];
 
-  if (!findInstance(state.selected) && !findVersion(state.selected)) {
-    state.selected = state.instances[0]?.id || state.latestRelease || state.versions[0]?.id || '';
-  }
   if (state.modsTarget && !findInstance(state.modsTarget)) {
     state.modsTarget = null;
     if ($('page-mods').classList.contains('active')) showPage('instances');
@@ -1656,6 +1897,7 @@ function heroTint(inst) {
 }
 
 function renderHero() {
+  if (!findInstance(state.selected)) state.selected = state.instances[0]?.id || '';
   const inst = findInstance(state.selected);
   const tags = [];
   const meta = [];
@@ -1667,19 +1909,14 @@ function renderHero() {
     if (hasMods(inst)) tags.push(pluralize(inst.modCount, ['мод', 'мода', 'модов']));
     meta.push(lastPlayedText(inst));
     if (inst.totalPlaytime) meta.push(t('{time} в игре', { time: formatPlaytime(inst.totalPlaytime) }));
-  } else if (state.selected) {
-    const v = findVersion(state.selected);
-    $('hero-icon').innerHTML = instanceIconHtml({ id: 'vanilla', name: 'vanilla' });
-    $('hero-title').textContent = v && v.inheritsFrom ? state.selected : `Minecraft ${state.selected}`;
-    tags.push(v && v.inheritsFrom ? t('на основе {version}', { version: v.inheritsFrom }) : t('Без сборки'));
-    meta.push(v && v.installed ? t('Установлена') : t('Скачается при запуске'));
   } else {
     $('hero-icon').innerHTML = '';
     $('hero-title').textContent = t('Выберите сборку');
   }
-  $('hero').style.setProperty('--hero-tint', heroTint(inst || (state.selected ? { id: 'vanilla', name: 'vanilla' } : null)));
+  $('hero').style.setProperty('--hero-tint', heroTint(inst));
   $('hero-tags').innerHTML = tags.map(t => `<span class="hero-tag">${esc(t)}</span>`).join('');
   $('hero-meta').innerHTML = meta.map(m => `<span>${m}</span>`).join('');
+  if (!state.isLaunching && !state.isGameRunning) setLaunchUi('idle');
 }
 
 function emptyBuilds() {
@@ -1687,7 +1924,7 @@ function emptyBuilds() {
     <div class="empty">
       <h3>${t('Сборок пока нет')}</h3>
       <p>${t('Сборка — отдельная папка со своими модами, мирами и настройками.')}</p>
-      <button class="btn btn-primary" id="btn-empty-new-inst">${icon('plus', 'ic-sm')}${t('Новая сборка')}</button>
+      <button class="btn btn-primary" data-new-instance aria-haspopup="menu">${icon('plus', 'ic-sm')}${t('Новая сборка')}</button>
     </div>`;
 }
 
@@ -1698,7 +1935,6 @@ function renderRecent() {
   list.innerHTML = '';
   if (!state.instances.length) {
     list.innerHTML = emptyBuilds();
-    $('btn-empty-new-inst').addEventListener('click', openNewInstanceModal);
     return;
   }
   const recent = state.instances.slice(0, RECENT_SLOTS);
@@ -1732,8 +1968,9 @@ function renderRecent() {
   if (recent.length >= RECENT_SLOTS) return;
   const add = document.createElement('button');
   add.className = 'rcard rcard-new';
+  add.dataset.newInstance = '';
+  add.setAttribute('aria-haspopup', 'menu');
   add.innerHTML = `${icon('plus')}<span>${t('Новая сборка')}</span>`;
-  add.addEventListener('click', openNewInstanceModal);
   list.appendChild(add);
 }
 
@@ -1844,6 +2081,15 @@ function buildActions(inst) {
     icon: () => openIconPicker(inst.id),
     copy: () => copyBuild(inst),
     export: () => openMrpackExport(inst),
+    shortcut: async () => {
+      try {
+        await api.createInstanceShortcut(inst.id, await instanceShortcutIcon(inst));
+        toast(t('Ярлык сборки создан на рабочем столе'));
+      } catch (e) {
+        await loadAccounts();
+        toast(errText(e), 'error');
+      }
+    },
     delete: () => deleteBuild(inst)
   };
 }
@@ -1857,6 +2103,7 @@ function buildMenuItems(inst, acts) {
     { label: t('Перенести настройки из другой сборки'), icon: 'transfer', run: acts.sync },
     { label: t('Копировать'), icon: 'copy', run: acts.copy },
     { label: t('Экспорт сборки'), icon: 'upload', run: acts.export },
+    api.platform === 'win32' && { label: t('Создать ярлык на рабочем столе'), icon: 'play', run: acts.shortcut },
     !inst.isPrism && 'separator',
     !inst.isPrism && { label: t('Удалить'), icon: 'trash', run: acts.delete, danger: true }
   ].filter(Boolean);
@@ -1914,7 +2161,7 @@ async function runFix(instanceId, fix, button) {
         return;
       case 'console':
         closeAllModals();
-        if (state.settings.showConsole === false) api.openConsoleWindow();
+        if (state.settings.showConsole !== true) api.openConsoleWindow();
         else showPage('logs');
         return;
     }
@@ -1989,7 +2236,7 @@ function setupProblems() {
   $('crash-report').addEventListener('click', () => api.openCrashReport());
   $('crash-console').addEventListener('click', () => {
     $('modal-crash').classList.add('hidden');
-    if (state.settings.showConsole === false) api.openConsoleWindow();
+    if (state.settings.showConsole !== true) api.openConsoleWindow();
     else showPage('logs');
   });
   api.onGameCrashed(showCrash);
@@ -2288,7 +2535,6 @@ function renderInstanceGrid() {
   if (!state.instances.length) {
     container.className = 'table';
     container.innerHTML = emptyBuilds();
-    $('btn-empty-new-inst').addEventListener('click', openNewInstanceModal);
     return;
   }
 
@@ -2356,8 +2602,21 @@ function startBackgroundUpdateChecks() {
   setInterval(backgroundUpdateCheck, UPDATE_CHECK_INTERVAL);
 }
 
+function setupNewInstanceMenu(openModrinthPacks) {
+  document.querySelector('.app').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-new-instance]');
+    if (!button) return;
+    openMenu(button, [
+      { label: t('Создать вручную'), icon: 'plus', run: openNewInstanceModal },
+      { label: t('Модпаки Modrinth'), icon: 'download', run: openModrinthPacks },
+      'separator',
+      { label: t('Модпак .mrpack…'), icon: 'box', run: pickMrpack },
+      { label: t('Из .zip…'), icon: 'transfer', run: pickInstanceZip }
+    ]);
+  });
+}
+
 function setupInstances() {
-  $('btn-new-instance').addEventListener('click', openNewInstanceModal);
   document.querySelectorAll('#builds-view-seg button').forEach(btn => {
     btn.addEventListener('click', () => {
       saveSettings({ buildsView: btn.dataset.buildsView });
@@ -2953,13 +3212,17 @@ function setupMods() {
   $('modrinth-sort-filter').addEventListener('change', searchModrinth);
 }
 
+function catalogSkeleton() {
+  return Array.from({ length: 6 }, () => '<div class="trow skeleton-row"><div class="sk sk-icon"></div><div class="trow-main"><div class="sk sk-line"></div><div class="sk sk-line short"></div></div></div>').join('');
+}
+
 let modrinthRequest = 0;
 async function searchModrinth() {
   const list = $('modrinth-results');
   const reqId = ++modrinthRequest;
   const inst = modsInstance();
   if (!inst) return;
-  list.innerHTML = Array.from({ length: 6 }, () => '<div class="trow skeleton-row"><div class="sk sk-icon"></div><div class="trow-main"><div class="sk sk-line"></div><div class="sk sk-line short"></div></div></div>').join('');
+  list.innerHTML = catalogSkeleton();
 
   // Installed state of catalog entries comes from the scan
   if (!modsUi.scanned) scanMods().then(() => {
@@ -3006,6 +3269,27 @@ function installedByProject() {
   return map;
 }
 
+function modrinthCatalogRow(hit, fallback, kind) {
+  const row = document.createElement('div');
+  row.className = 'trow trow-catalog';
+  const cats = (hit.display_categories || hit.categories || []).map(c => CATEGORY_LABELS[c]).filter(Boolean).slice(0, 3);
+  row.innerHTML = `
+    <div class="mod-icon mod-icon-lg"></div>
+    <div class="trow-main">
+      <div class="trow-title">${esc(hit.title)} <span class="by">${esc(hit.author || '')}</span></div>
+      <div class="trow-desc">${esc(hit.description || '')}</div>
+      <div class="trow-sub">${icon('download', 'ic-xs')} ${formatCount(hit.downloads || 0)}${cats.length ? ' · ' + cats.join(', ') : ''}</div>
+    </div>
+    <div class="catalog-actions">
+      <button class="btn btn-secondary btn-sm" data-preview>${t('Предпросмотр')}</button>
+      <div class="trow-status"></div>
+    </div>
+  `;
+  projectIcon(row.querySelector('.mod-icon'), hit.icon_url, fallback);
+  row.querySelector('[data-preview]').addEventListener('click', () => openModrinthPreview(hit, fallback, kind));
+  return row;
+}
+
 function renderModrinthResults(hits) {
   const list = $('modrinth-results');
   const info = kindInfo();
@@ -3015,24 +3299,7 @@ function renderModrinthResults(hits) {
     return;
   }
   hits.forEach(hit => {
-    const row = document.createElement('div');
-    row.className = 'trow trow-catalog';
-    const cats = (hit.display_categories || hit.categories || []).map(c => CATEGORY_LABELS[c]).filter(Boolean).slice(0, 3);
-    row.innerHTML = `
-      <div class="mod-icon mod-icon-lg">${hit.icon_url ? '<img alt="">' : icon(info.icon)}</div>
-      <div class="trow-main">
-        <div class="trow-title">${esc(hit.title)} <span class="by">${esc(hit.author)}</span></div>
-        <div class="trow-desc">${esc(hit.description || '')}</div>
-        <div class="trow-sub">${icon('download', 'ic-xs')} ${formatCount(hit.downloads || 0)}${cats.length ? ' · ' + cats.join(', ') : ''}</div>
-      </div>
-      <div class="trow-status"></div>
-    `;
-    const img = row.querySelector('img');
-    if (img) {
-      img.src = hit.icon_url;
-      img.onerror = () => { img.style.visibility = 'hidden'; };
-    }
-
+    const row = modrinthCatalogRow(hit, info.icon, modsUi.kind);
     const kind = modsUi.kind;
     const slot = row.querySelector('.trow-status');
     const renderAction = () => {
@@ -3316,7 +3583,7 @@ function setLaunchUi(mode, text) {
   const btn = $('btn-launch');
   btn.classList.toggle('btn-launch-loading', mode === 'launching');
   btn.classList.toggle('running', mode === 'running');
-  btn.disabled = mode === 'launching';
+  btn.disabled = mode === 'launching' || (mode === 'idle' && !findInstance(state.selected));
   $('btn-launch-icon').setAttribute('href', mode === 'running' ? '#i-stop' : '#i-play');
   $('btn-launch-text').textContent = text || (mode === 'idle' ? t('Играть') : mode === 'running' ? t('Закрыть игру') : t('Запуск…'));
   $('progress').classList.toggle('active', mode === 'launching');
@@ -3336,20 +3603,20 @@ function setProgress(percent, text) {
 }
 
 async function handleLaunch({ ignoreModIssues = false } = {}) {
-  if (state.isLaunching || state.isGameRunning || !state.selected) return;
+  const inst = findInstance(state.selected);
+  if (state.isLaunching || state.isGameRunning || !inst) return;
 
   state.isLaunching = true;
   setLaunchUi('launching');
   setProgress(null, t('Проверка файлов…'));
 
-  const inst = findInstance(state.selected);
   setProgress(null, t('Проверка настроек…'));
-  await maybeSyncOptions(inst ? inst.id : 'global');
+  await maybeSyncOptions(inst.id);
   setProgress(null, t('Проверка файлов…'));
 
-  appendLog('info', `[LAUNCHER]: ${inst ? t('Запуск сборки «{name}»', { name: inst.name }) : t('Запуск {version}', { version: state.selected })}`);
+  appendLog('info', `[LAUNCHER]: ${t('Запуск сборки «{name}»', { name: inst.name })}`);
 
-  const result = await api.launchGame(inst ? { instanceId: inst.id, ignoreModIssues } : { version: state.selected })
+  const result = await api.launchGame({ instanceId: inst.id, ignoreModIssues })
     .catch(e => ({ success: false, error: errText(e) }));
 
   state.isLaunching = false;
@@ -3360,6 +3627,7 @@ async function handleLaunch({ ignoreModIssues = false } = {}) {
   }
   if (!result.success) {
     setLaunchUi('idle');
+    await loadAccounts();
     appendLog('error', `[LAUNCHER]: ${result.error}`);
     toast(result.error, 'error', 7000);
   }
@@ -3405,8 +3673,11 @@ function setupSubscriptions() {
 
   api.onLaunchProgress((data) => {
     if (!state.isLaunching) return;
-    const label = PROGRESS_LABELS[data.type] || (data.name ? t('Загрузка {name}', { name: data.name }) : t('Загрузка…'));
-    if (data.total > 1) setProgress(data.percent, label);
+    const assets = data.type === 'assets' && data.total > 0;
+    const label = assets
+      ? t('Загрузка ресурсов: {n} из {total}', { n: data.current, total: data.total })
+      : PROGRESS_LABELS[data.type] || (data.name ? t('Загрузка {name}', { name: data.name }) : t('Загрузка…'));
+    if (assets || data.total > 1) setProgress(data.percent, label);
     else setProgress(null, label);
   });
 
@@ -3657,7 +3928,7 @@ function appendLog(type, message) {
 
 function showLogLine(type, message) {
   const level = logView.append(type, message);
-  const consoleVisible = state.settings.showConsole !== false;
+  const consoleVisible = state.settings.showConsole === true;
   if (consoleVisible && !$('page-logs').classList.contains('active') && level !== 'debug' && level !== 'stdout') {
     $('log-indicator').classList.add('active');
     if (level === 'error') $('log-indicator').classList.add('error');
@@ -3665,7 +3936,7 @@ function showLogLine(type, message) {
 }
 
 function applyConsoleVisibility() {
-  const show = state.settings.showConsole !== false;
+  const show = state.settings.showConsole === true;
   document.querySelector('.nav-item[data-tab="logs"]').classList.toggle('hidden', !show);
   if (!show && $('page-logs').classList.contains('active')) showPage('home');
 }
