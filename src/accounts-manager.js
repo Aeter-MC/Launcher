@@ -1,6 +1,6 @@
 /**
  * accounts-manager.js
- * Manages player accounts: Offline, Microsoft OAuth, and Ely.by (authlib-injector).
+ * manages player accounts: Offline, Microsoft OAuth, and Ely.by (authlib-injector).
  * accounts.json stays readable, but tokens are kept in an encrypted `secret` field
  * using a private profile key on Linux and system storage elsewhere.
  */
@@ -12,13 +12,13 @@ const { MicrosoftAuth, toMclcAuth } = require('./microsoft-auth');
 const { ElyByManager } = require('./elyby-manager');
 const { t } = require('./i18n/i18n');
 
-// Account fields that go into the encrypted `secret`
+// account fields that go into the encrypted `secret`
 const SECRET_FIELDS = {
   microsoft: ['mclcAuth'],
   elyby: ['accessToken', 'clientToken']
 };
 const LOCAL_SECRET_PREFIX = 'local-v1:';
-// All the window gets: tokens never leave the main process
+// all the window gets: tokens never leave the main process
 const PUBLIC_FIELDS = ['id', 'type', 'username', 'uuid', 'skinUrl', 'createdAt'];
 const rejectedMicrosoftSessions = new WeakSet();
 
@@ -37,7 +37,7 @@ function publicAccount(acc) {
   return out;
 }
 
-/** True when Microsoft's login server resolves and answers within a few seconds. */
+/** true when Microsoft's login server resolves and answers within a few seconds. */
 async function isOnline() {
   try {
     await require('axios').head('https://login.live.com/', { timeout: 4000, validateStatus: () => true });
@@ -54,11 +54,11 @@ class AccountsManager {
     this.elyByManager = new ElyByManager(gameDir);
     this.msAuth = new MicrosoftAuth();
     this._data = null;
-    // Set when accounts.json exists but can't be read or moved aside: then nothing is written over it
+    // set when accounts.json exists but can't be read or moved aside: then nothing is written over it
     this.readOnly = false;
   }
 
-  // Loaded on first use: safeStorage can only decrypt once the app is ready
+  // loaded on first use: safeStorage can only decrypt once the app is ready
   get data() {
     if (!this._data) this._data = this.load();
     return this._data;
@@ -91,7 +91,7 @@ class AccountsManager {
         return data;
       } catch (e) {
         console.error('[AccountsManager] Failed to read accounts:', e.message);
-        // Keep the broken file for recovery instead of overwriting it with the default account
+        // keep the broken file for recovery instead of overwriting it with the default account
         try {
           fs.renameSync(this.filePath, `${this.filePath}.broken-${Date.now()}`);
         } catch (err) {
@@ -100,7 +100,7 @@ class AccountsManager {
       }
     }
 
-    // Default offline account
+    // default offline account
     const defaultAccount = {
       id: 'default-offline',
       type: 'offline',
@@ -123,7 +123,7 @@ class AccountsManager {
     const tmp = `${this.filePath}.${crypto.randomUUID()}.tmp`;
     try {
       const onDisk = { ...data, accounts: data.accounts.map(acc => this.sealSecret(acc)) };
-      // Written next to it and swapped in one step, so a crash mid-write can't leave a half-written file.
+      // written next to it and swapped in one step, so a crash mid-write can't leave a half-written file.
       fs.writeFileSync(tmp, JSON.stringify(onDisk, null, 2), { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
       fs.renameSync(tmp, this.filePath);
       this.data = data;
@@ -154,7 +154,7 @@ class AccountsManager {
       return safeStorage.encryptString(json).toString('base64');
     }
 
-    // Keep Linux logins readable across sessions with different keyring availability.
+    // keep Linux logins readable across sessions with different keyring availability.
     const nonce = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv('aes-256-gcm', this.localKey(true), nonce);
     const ciphertext = Buffer.concat([cipher.update(json, 'utf-8'), cipher.final()]);
@@ -171,7 +171,7 @@ class AccountsManager {
     return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]).toString('utf-8');
   }
 
-  /** Puts the decrypted tokens back on the account; keeps `secret` as is if it can't be decrypted (another PC or Windows user). */
+  /** puts the decrypted tokens back on the account; keeps `secret` as is if it can't be decrypted (another PC or Windows user). */
   openSecret(acc) {
     if (!acc.secret) return;
     try {
@@ -182,7 +182,7 @@ class AccountsManager {
     }
   }
 
-  /** Copy of the account for the file, with its tokens moved into the encrypted `secret`. */
+  /** copy of the account for the file, with its tokens moved into the encrypted `secret`. */
   sealSecret(acc) {
     const copy = { ...acc };
     const tokens = {};
@@ -222,7 +222,7 @@ class AccountsManager {
     const cleanName = (username || '').trim() || 'Player';
     const uuid = crypto.createHash('md5').update('OfflinePlayer:' + cleanName).digest('hex');
 
-    // Check if offline account with this username already exists
+    // check if offline account with this username already exists
     let existing = this.data.accounts.find(a => a.type === 'offline' && a.username.toLowerCase() === cleanName.toLowerCase());
     if (existing) {
       this.data.activeAccountId = existing.id;
@@ -246,7 +246,7 @@ class AccountsManager {
   }
 
   /**
-   * Step 1 of Microsoft login: get a code for microsoft.com/link.
+   * step 1 of Microsoft login: get a code for microsoft.com/link.
    */
   async startMicrosoftLogin() {
     this.msAuth.cancel();
@@ -259,7 +259,7 @@ class AccountsManager {
   }
 
   /**
-   * Step 2: wait until the user signs in, then create/update the account.
+   * step 2: wait until the user signs in, then create/update the account.
    */
   async finishMicrosoftLogin() {
     if (!this.msCode) throw new Error(t('Вход не начат'));
@@ -298,13 +298,13 @@ class AccountsManager {
   }
 
   /**
-   * Returns the active account with fresh tokens, ready for launching.
+   * returns the active account with fresh tokens, ready for launching.
    */
   async getLaunchAccount(onWarn = () => {}) {
     const acc = this.getActiveAccount();
     if (!acc) return null;
 
-    // Tokens stay encrypted when the file came from another PC or Windows user
+    // tokens stay encrypted when the file came from another PC or Windows user
     if (acc.type === 'microsoft' && needsMicrosoftSignIn(acc)) {
       throw new Error(t('Сессия Microsoft истекла. Войдите в аккаунт заново.'));
     }
@@ -314,10 +314,10 @@ class AccountsManager {
 
     if (acc.type === 'microsoft' && acc.mclcAuth) {
       const meta = acc.mclcAuth.meta || {};
-      // Refresh a few minutes before expiry; accounts saved by msmc use the same client id and token format
+      // refresh a few minutes before expiry; accounts saved by msmc use the same client id and token format
       if (!meta.exp || meta.exp - Date.now() < 5 * 60 * 1000) {
         if (!meta.refresh) {
-          // Keep using a valid token until it actually expires.
+          // keep using a valid token until it actually expires.
           return acc;
         }
         try {

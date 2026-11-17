@@ -1,9 +1,9 @@
 /**
  * loaders.js
- * Mod loaders (Fabric, Quilt, Forge, NeoForge): which versions exist for a Minecraft version,
+ * mod loaders (Fabric, Quilt, Forge, NeoForge): which versions exist for a Minecraft version,
  * and installing one as a profile in versions/ that MCLC can launch.
  *
- * Forge and NeoForge ship an installer jar. Its libraries are downloaded here and its
+ * forge and NeoForge ship an installer jar. Its libraries are downloaded here and its
  * processors (they patch the Minecraft jar) are run with Java, the same steps the official
  * installer takes, just without its window.
  */
@@ -52,7 +52,7 @@ function compareVersions(a, b) {
 
 const newestFirst = (list) => [...list].sort((a, b) => compareVersions(b, a));
 
-/** NeoForge numbers follow Minecraft: 21.1.77 -> 1.21.1, 21.0.5 -> 1.21, 26.1.2.40 -> 26.1.2, 26.3.0.95 -> 26.3 */
+/** neoForge numbers follow Minecraft: 21.1.77 -> 1.21.1, 21.0.5 -> 1.21, 26.1.2.40 -> 26.1.2, 26.3.0.95 -> 26.3 */
 function neoforgeMinecraft(version) {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
   if (!m) return null;
@@ -69,7 +69,7 @@ function mavenPath(coord) {
   return `${group.replace(/\./g, '/')}/${artifact}/${version}/${artifact}-${version}${classifier ? `-${classifier}` : ''}.${ext}`;
 }
 
-/** Where a library goes in libraries/ and where to get it. Old profiles give only a name and a maven base URL. */
+/** where a library goes in libraries/ and where to get it. Old profiles give only a name and a maven base URL. */
 function libraryFile(lib) {
   const artifact = lib.downloads && lib.downloads.artifact;
   if (artifact && artifact.path) return { path: artifact.path, url: artifact.url || '', sha1: artifact.sha1 || null };
@@ -88,7 +88,7 @@ function sha1File(file) {
   });
 }
 
-/** The file is there and, when a hash is known, has that hash. */
+/** the file is there and, when a hash is known, has that hash. */
 async function fileMatches(file, sha1) {
   if (!fs.existsSync(file)) return false;
   if (!sha1) return true;
@@ -116,7 +116,7 @@ async function downloadOnce(url, dest, sha1) {
   fs.renameSync(part, dest);
 }
 
-/** Downloads with two more tries on network errors; a missing file (4xx) fails at once. */
+/** downloads with two more tries on network errors; a missing file (4xx) fails at once. */
 async function download(url, dest, sha1 = null) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   for (let attempt = 1; ; attempt++) {
@@ -143,7 +143,7 @@ function jarMainClass(jar) {
   return m ? m[1] : null;
 }
 
-/** Runs Java and rejects with the last lines of its output when it fails. */
+/** runs Java and rejects with the last lines of its output when it fails. */
 function runJava(java, args, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(java, args, { cwd, windowsHide: true });
@@ -179,7 +179,7 @@ class LoaderManager {
     return LOADER_NAMES[loader] || loader;
   }
 
-  /** GET with a short memory cache; an old copy is used when the network is down. */
+  /** gET with a short memory cache; an old copy is used when the network is down. */
   async fetchList(url, options = {}) {
     const hit = this.lists.get(url);
     if (hit && Date.now() - hit.time < LIST_FRESH_MS) return hit.data;
@@ -238,7 +238,7 @@ class LoaderManager {
     }
   }
 
-  /** Versions for the new build dialog: [{ version, recommended }], newest first. */
+  /** versions for the new build dialog: [{ version, recommended }], newest first. */
   async listVersions(loader, gameVersion) {
     const { versions, recommended } = await this.versionsOf(loader, gameVersion);
     return versions.map(version => ({ version, recommended: version === recommended }));
@@ -248,7 +248,7 @@ class LoaderManager {
     return !!id && fs.existsSync(path.join(this.root, 'versions', id, `${id}.json`));
   }
 
-  /** Id of an installed profile for this loader version, or null. */
+  /** id of an installed profile for this loader version, or null. */
   findInstalled(loader, gameVersion, loaderVersion, knownId = null) {
     const candidates = {
       fabric: [`fabric-loader-${loaderVersion}-${gameVersion}`],
@@ -262,8 +262,8 @@ class LoaderManager {
   }
 
   /**
-   * Makes sure the loader profile is in versions/ and returns { id, loaderVersion }.
-   * An installed profile is used as is, so launching works offline.
+   * makes sure the loader profile is in versions/ and returns { id, loaderVersion }.
+   * an installed profile is used as is, so launching works offline.
    */
   async ensure(loader, gameVersion, loaderVersion, options = {}) {
     const id = loaderVersion && this.findInstalled(loader, gameVersion, loaderVersion, options.knownId);
@@ -272,7 +272,7 @@ class LoaderManager {
   }
 
   /**
-   * Installs a loader version (the recommended one when none is given).
+   * installs a loader version (the recommended one when none is given).
    * options.onStatus(text, { progress }) reports progress (progress: a counter repeated many times), options.getJava() gives Java for the Forge/NeoForge processors.
    */
   async install(loader, gameVersion, loaderVersion, options = {}) {
@@ -309,12 +309,12 @@ class LoaderManager {
     return { id: res.data.id, loaderVersion };
   }
 
-  /** Full Forge maven version: "1.20.1-47.3.0", or "1.7.10-10.13.4.1614-1.7.10" for old ones. */
+  /** full Forge maven version: "1.20.1-47.3.0", or "1.7.10-10.13.4.1614-1.7.10" for old ones. */
   async forgeMavenVersion(gameVersion, loaderVersion) {
     try {
       const { versions } = await this.versionsOf('forge', gameVersion);
       if (!versions.includes(loaderVersion)) {
-        // Prism stores old versions without the "-1.7.10" ending
+        // prism stores old versions without the "-1.7.10" ending
         const full = versions.find(v => v.startsWith(`${loaderVersion}-`));
         if (full) return `${gameVersion}-${full}`;
       }
@@ -341,7 +341,7 @@ class LoaderManager {
   }
 
   /**
-   * Libraries from the profile: bundled in the installer (maven/...), downloaded, or,
+   * libraries from the profile: bundled in the installer (maven/...), downloaded, or,
    * without a URL, made later by the processors.
    */
   async fetchLibraries(libs, zip, onProgress) {
@@ -396,7 +396,7 @@ class LoaderManager {
       };
       const profile = readJson('install_profile.json');
 
-      // Old Forge installers (up to 1.12.2): the profile and the Forge jar sit right in the installer
+      // old Forge installers (up to 1.12.2): the profile and the Forge jar sit right in the installer
       if (profile.install && profile.versionInfo) {
         return await this.installLegacyForge(zip, profile, loaderVersion, onStatus);
       }
@@ -414,7 +414,7 @@ class LoaderManager {
       if (profile.path) libs.push({ name: profile.path, downloads: { artifact: { path: mavenPath(profile.path), url: '' } } });
       await this.fetchLibraries(libs, zip, (done, total) => onStatus(t('Библиотеки {loader}: {n} из {total}', { loader: name, n: done, total }), { progress: true }));
 
-      // Values the processor arguments refer to as {KEY}
+      // values the processor arguments refer to as {KEY}
       const data = {
         SIDE: 'client',
         MINECRAFT_JAR: clientJar,
@@ -498,7 +498,7 @@ class LoaderManager {
 
   /**
    * MCLC puts versions/<id>/<id>.jar on the classpath and downloads it again when it is missing.
-   * The json is written last: a profile in versions/ means the install finished.
+   * the json is written last: a profile in versions/ means the install finished.
    */
   finishProfile(id, json, clientJar) {
     const dir = path.join(this.root, 'versions', id);

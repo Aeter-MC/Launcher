@@ -1,6 +1,6 @@
 /**
  * console.js
- * Detached console window: shows the launcher/game log history and new lines live.
+ * detached console window: shows the launcher/game log history and new lines live.
  */
 i18n.translateDom(document.documentElement);
 

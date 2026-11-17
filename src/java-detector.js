@@ -1,6 +1,6 @@
 /**
  * java-detector.js
- * Locates installed Java JDK/JRE runtimes.
+ * locates installed Java JDK/JRE runtimes.
  */
 const fs = require('fs');
 const path = require('path');
@@ -28,7 +28,7 @@ function checkJavaPath(exePath) {
         });
       }
 
-      // Extract version: e.g. "21.0.12" or "1.8.0_351"
+      // extract version: e.g. "21.0.12" or "1.8.0_351"
       const verMatch = output.match(/version\s+"([^"]+)"/i) || output.match(/openjdk\s+(\S+)/i);
       const versionStr = verMatch ? verMatch[1] : 'Unknown';
       let major = 0;
@@ -52,8 +52,15 @@ function checkJavaPath(exePath) {
   });
 }
 
+function checkJavaGc(exePath, gcFlag) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(exePath) || !/^-XX:\+Use(?:Z|Shenandoah)GC$/.test(gcFlag)) return resolve(false);
+    execFile(exePath, [gcFlag, '-version'], { timeout: 5000, windowsHide: true }, (error) => resolve(!error));
+  });
+}
+
 /**
- * Recursively looks for the Java executable in bin/ under a folder (limited depth).
+ * recursively looks for the Java executable in bin/ under a folder (limited depth).
  */
 function scanForJava(dir, depth, found) {
   if (depth < 0) return;
@@ -105,7 +112,7 @@ async function detectJavaInstallations(extraRoots = [], cache = null) {
     try {
       const output = execFileSync('where.exe', ['java'], { encoding: 'utf-8', timeout: 2000, windowsHide: true });
       for (const candidate of output.trim().split(/\r?\n/)) {
-        // Skip Oracle's javapath shim, which redirects to a real install.
+        // skip Oracle's javapath shim, which redirects to a real install.
         if (candidate && fs.existsSync(candidate) && !/javapath/i.test(candidate)) foundPaths.add(candidate);
       }
     } catch (e) {}
@@ -145,7 +152,7 @@ async function detectJavaInstallations(extraRoots = [], cache = null) {
 }
 
 /**
- * Picks the best Java for a required major version:
+ * picks the best Java for a required major version:
  * exact match first, then the closest newer one (Java 8 games need exactly 8).
  */
 function pickJavaFor(list, requiredMajor) {
@@ -160,6 +167,7 @@ function pickJavaFor(list, requiredMajor) {
 module.exports = {
   detectJavaInstallations,
   checkJavaPath,
+  checkJavaGc,
   pickJavaFor,
   JAVA_BINARY
 };

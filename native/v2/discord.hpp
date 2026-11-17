@@ -8,7 +8,7 @@
 #include "../../vendor/json.hpp"
 
 namespace aeter {
-// The owner is the first live session. Standby runners never send CLEAR for
+// the owner is the first live session. Standby runners never send CLEAR for
 // another instance. All I/O has a deadline; absence of Discord is non-fatal.
 class DiscordRpc {
     HANDLE mutex_ = nullptr;
@@ -25,7 +25,7 @@ class DiscordRpc {
     static std::string text(const nlohmann::json& j, const char* key, const char* fallback = "") {
         const auto found = j.find(key);
         std::string result = found != j.end() && found->is_string() ? found->get<std::string>() : fallback;
-        // Keep a valid UTF-8 prefix (Discord limits strings to 128 characters).
+        // keep a valid UTF-8 prefix (Discord limits strings to 128 characters).
         size_t end = 0, characters = 0;
         while (end < result.size() && characters < 128) {
             const auto c = static_cast<unsigned char>(result[end]);
@@ -50,7 +50,7 @@ class DiscordRpc {
         input_.clear(); ready_ = false; partialDeadline_ = 0;
         retry_ = GetTickCount64() + 1000;
     }
-    // Overlapped operation completion must be collected before its stack frame
+    // overlapped operation completion must be collected before its stack frame
     // disappears. Cancellation completion is waited after a short deadline.
     bool transfer(bool write, void* data, DWORD bytes, DWORD& done) {
         done = 0;
@@ -149,13 +149,13 @@ class DiscordRpc {
         std::wstring name = L"Local\\AeterV2.Discord." + std::wstring(sid);
         LocalFree(sid);
 #ifdef AETER_NATIVE_TESTING
-        // Separate arbitration domain per fake server. This non-secret hash is
+        // separate arbitration domain per fake server. This non-secret hash is
         // only a mutex-name suffix, not a credential or cryptographic primitive.
         uint64_t suffix = 1469598103934665603ull;
         for (wchar_t c : testPipe_) { suffix ^= static_cast<uint64_t>(c); suffix *= 1099511628211ull; }
         name += L".test." + std::to_wstring(suffix);
 #endif
-        // Use the token's default DACL, including any restrictions from the
+        // use the token's default DACL, including any restrictions from the
         // desktop sandbox. A SID-only DACL refused the second restricted client.
         mutex_ = CreateMutexExW(nullptr, name.c_str(), 0, SYNCHRONIZE | MUTEX_MODIFY_STATE);
         if (!mutex_) { enabled_ = false; status_ = "mutex-unavailable"; }

@@ -1,6 +1,6 @@
 /**
  * app.js
- * Frontend controller for AeterMC.
+ * frontend controller for AeterMC.
  */
 
 // `api` is the global bridge exposed by preload.js (window.api)
@@ -12,6 +12,7 @@ const state = {
   versions: [],
   latestRelease: '',
   instances: [],
+  blockIcons: {},
   javaList: [],
   selected: '',          // instance id or version id
   modsTarget: null,      // id of the build whose mods are open
@@ -28,7 +29,22 @@ const state = {
   viewerIndex: -1
 };
 
-// ================= HELPERS =================
+// keep hints in the interface, but avoid native title popups
+function disableNativeTooltips() {
+  const strip = (root) => root.querySelectorAll?.('[title]').forEach((el) => {
+    const title = el.getAttribute('title');
+    if (title && !el.getAttribute('aria-label')) el.setAttribute('aria-label', title);
+    el.removeAttribute('title');
+  });
+  strip(document);
+  new MutationObserver((records) => records.forEach((record) => {
+    if (record.type === 'attributes') strip(record.target.parentElement || document);
+    else record.addedNodes.forEach((node) => node.nodeType === 1 && strip(node));
+  })).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['title'] });
+}
+disableNativeTooltips();
+
+// helpers
 const $ = (id) => document.getElementById(id);
 // i18n.js is loaded before this file; the page's language comes in the URL like the theme
 const { t } = i18n;
@@ -113,74 +129,83 @@ function formatCount(n) {
   return String(n);
 }
 
-function hueFor(text) {
-  let h = 0;
-  for (const ch of String(text)) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return h;
-}
-
-// Default build icons: isometric blocks in the style of the app icon.
-// Colors live in design tokens (--color-block-<name>-top/left/right/band-*/ore/tile); the order
+// default build icons: flat pixel tiles.
+// colors live in design tokens (--color-block-<name>-top/left/right/band-*/ore/tile); the order
 // here decides which block a build gets, so append new blocks at the end.
 const BLOCKS = [
-  { name: 'grass', band: true },
+  { name: 'grass' },
   { name: 'stone' },
   { name: 'sand' },
   { name: 'planks' },
-  { name: 'snow', band: true },
-  { name: 'diamond', ore: true },
+  { name: 'snow' },
+  { name: 'diamond' },
   { name: 'netherrack' },
   { name: 'end-stone' },
-  { name: 'obsidian', ore: true },
+  { name: 'obsidian' },
   { name: 'copper' },
   { name: 'ice' },
   { name: 'moss' }
 ];
+const DEFAULT_INSTANCE_ICON = '../../assets/default-instance.png';
 
 function blockSvg(b) {
   const c = (part) => `style="fill:var(--color-block-${b.name}-${part})"`;
-  const band = b.band ? `
-    <path d="M6 15 24 24v4L6 19z" ${c('band-left')}/>
-    <path d="M24 24 42 15v4l-18 9z" ${c('band-right')}/>` : '';
-  const ore = b.ore ? `
-    <path d="M11 22l3 1.5v3L11 25z M17 30l3 1.5v3L17 33z M30 27l3-1.5v3L30 30z M35 33l3-1.5v3L35 36z M21 13l3 1.5-3 1.5-3-1.5z M29 15l3 1.5-3 1.5-3-1.5z" ${c('ore')}/>` : '';
-  return `<svg viewBox="0 0 48 48" class="block-svg">
-    <path d="M24 6 42 15 24 24 6 15z" ${c('top')}/>
-    <path d="M6 15 24 24v20L6 35z" ${c('left')}/>
-    <path d="M24 24 42 15v20L24 44z" ${c('right')}/>${band}${ore}
-    <path d="M24 6 42 15v20L24 44 6 35V15zM6 15l18 9 18-9M24 24v20" style="fill:none;stroke:var(--color-block-outline)" stroke-width="1" stroke-linejoin="round"/>
+  const textures = {
+    grass: `<rect x="7" y="7" width="34" height="34" ${c('left')}/><path d="M7 7h34v11H7zm0 11h6v5h5v-5h7v3h5v-3h11" ${c('top')}/><path d="M11 29h5v4h-5zm17-4h4v5h-4zm7 9h4v4h-4z" ${c('right')}/>`,
+    stone: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M10 10h8v5h-8zm17-1h9v4h-9zM20 18h7v6h-7zM9 29h9v7H9zm20 3h9v6h-9z" ${c('left')}/><path d="M14 19h5v4h-5zm18-3h6v7h-6zM21 28h6v5h-6z" ${c('right')}/>`,
+    sand: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M11 12h3v3h-3zm10 5h4v3h-4zm12-7h3v4h-3zM14 28h4v3h-4zm13 5h3v3h-3zm8-9h3v3h-3z" ${c('left')}/><path d="M18 10h3v2h-3zm12 14h4v2h-4zM9 35h4v2H9z" ${c('right')}/>`,
+    planks: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M7 17h34v3H7zm0 11h34v3H7zM18 7h3v10h-3zm11 13h3v8H29zM14 31h3v10h-3z" ${c('right')}/><path d="M10 11h6v2h-6zm14 11h4v2h-4zm10 11h4v2h-4z" ${c('left')}/>`,
+    snow: `<rect x="7" y="7" width="34" height="34" ${c('left')}/><path d="M7 7h34v13H7zm0 13h8v4h6v-4h9v3h5v-3h6" ${c('top')}/><path d="M12 29h5v4h-5zm18-2h4v5h-4zm6 8h3v3h-3z" ${c('right')}/>`,
+    diamond: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M10 10h8v5h-8zm18 1h8v4h-8zM18 21h7v6h-7zM9 31h8v6H9zm21 2h8v5h-8z" ${c('left')}/><path d="M13 18h5v5h-5zm17-2h5v6h-5zM23 30h5v5h-5zm11 5h4v4h-4z" ${c('ore')}/>`,
+    netherrack: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M9 11h9v5H9zm14-3h7v7h-7zm10 7h7v6h-7zM14 21h9v7h-9zm14 5h8v6h-8zM8 32h10v7H8z" ${c('left')}/><path d="M18 15h6v5h-6zm11 3h5v5h-5zM20 30h7v6h-7zm14 5h6v5h-6z" ${c('right')}/>`,
+    'end-stone': `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M10 11h7v6h-7zm19-2h8v5h-8zM20 20h6v5h-6zM9 29h9v7H9zm21 4h8v5h-8z" ${c('left')}/><path d="M15 19h4v4h-4zm18-3h5v6h-5zM23 29h5v4h-5z" ${c('right')}/>`,
+    obsidian: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M11 8h5v12h-5zm12 5h5v15h-5zm11-5h4v13h-4zM15 27h5v12h-5zm15 5h5v8h-5z" ${c('right')}/><path d="M13 11h3v6h-3zm12 5h3v9h-3zm10-5h3v7h-3zM17 30h3v6h-3z" ${c('ore')}/>`,
+    copper: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M10 10h9v7h-9zm14-2h7v10h-7zm10 7h6v8h-6zM14 22h9v8h-9zm14 6h9v10h-9zM8 33h8v7H8z" ${c('left')}/><path d="M18 17h7v6h-7zm13 4h7v6h-7zM18 31h8v8h-8z" ${c('right')}/>`,
+    ice: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M10 30 29 11h6L16 30zm7 9 20-20v7L24 39z" ${c('left')}/><path d="M9 12h11v4H9zm21 22h8v4h-8z" ${c('right')}/>`,
+    moss: `<rect x="7" y="7" width="34" height="34" ${c('top')}/><path d="M9 10h9v8H9zm17-2h9v7h-9zM17 20h10v9H17zm15 4h8v10h-8zM8 31h10v9H8z" ${c('left')}/><path d="M18 12h6v6h-6zm11 5h7v6h-7zM21 31h8v7h-8z" ${c('right')}/>`
+  };
+  return `<svg viewBox="0 0 48 48" class="block-svg" shape-rendering="crispEdges">
+    ${textures[b.name] || `<rect x="7" y="7" width="34" height="34" ${c('top')}/>`}
+    <rect x="6.5" y="6.5" width="35" height="35" style="fill:none;stroke:var(--color-block-outline)"/>
   </svg>`;
 }
 
-function autoBlock(inst) {
-  return BLOCKS[hueFor(inst.id || inst.name) % BLOCKS.length];
-}
-
 function blockIconHtml(block) {
+  const texture = state.blockIcons[block.name];
+  if (texture) return `<div class="inst-icon inst-icon-img"><img class="pixelated" src="${texture}" alt=""></div>`;
   return `<div class="inst-icon" style="background:var(--color-block-${block.name}-tile)">${blockSvg(block)}</div>`;
 }
 
-/** Custom image, then the block picked by the user, then the automatic block. */
+/** custom image, then a selected block, then the default icon. */
 function instanceIconHtml(inst) {
   if (inst.iconImage) return `<div class="inst-icon inst-icon-img"><img src="${esc(inst.iconImage)}" alt=""></div>`;
-  return blockIconHtml(BLOCKS.find(b => b.name === inst.iconBlock) || autoBlock(inst));
+  const block = BLOCKS.find(b => b.name === inst.iconBlock);
+  if (block) return blockIconHtml(block);
+  return `<div class="inst-icon inst-icon-img"><img class="pixelated" src="${DEFAULT_INSTANCE_ICON}" alt=""></div>`;
 }
 
-/** Export the same custom image or themed block that the instance card shows. */
+/** export the same custom image or themed block that the instance card shows. */
 async function instanceShortcutIcon(inst) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 256;
   const ctx = canvas.getContext('2d');
   let source = inst.iconImage;
   if (!source) {
-    const block = BLOCKS.find(b => b.name === inst.iconBlock) || autoBlock(inst);
-    const style = getComputedStyle(document.documentElement);
-    const svg = blockSvg(block)
-      .replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" ')
-      .replace(/var\((--[\w-]+)\)/g, (_, token) => style.getPropertyValue(token).trim());
-    source = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    ctx.fillStyle = style.getPropertyValue(`--color-block-${block.name}-tile`).trim();
-    ctx.fillRect(0, 0, 256, 256);
+    const block = BLOCKS.find(b => b.name === inst.iconBlock);
+    if (block) {
+      const style = getComputedStyle(document.documentElement);
+      source = state.blockIcons[block.name];
+      if (!source) {
+        const svg = blockSvg(block)
+          .replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" ')
+          .replace(/var\((--[\w-]+)\)/g, (_, token) => style.getPropertyValue(token).trim());
+        source = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      }
+      ctx.fillStyle = style.getPropertyValue(`--color-block-${block.name}-tile`).trim();
+      ctx.fillRect(0, 0, 256, 256);
+    } else {
+      source = DEFAULT_INSTANCE_ICON;
+    }
   }
   const image = new Image();
   await new Promise((resolve, reject) => {
@@ -188,14 +213,14 @@ async function instanceShortcutIcon(inst) {
     image.onerror = () => reject(new Error(t('Не удалось прочитать картинку')));
     image.src = source;
   });
-  ctx.imageSmoothingEnabled = image.naturalWidth >= 64;
+  ctx.imageSmoothingEnabled = source !== DEFAULT_INSTANCE_ICON && image.naturalWidth >= 64;
   const scale = Math.max(256 / image.naturalWidth, 256 / image.naturalHeight);
   const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
   ctx.drawImage(image, (256 - width) / 2, (256 - height) / 2, width, height);
   return canvas.toDataURL('image/png');
 }
 
-// Small (pixel-art) pictures stay crisp instead of being smeared when scaled up
+// small (pixel-art) pictures stay crisp instead of being smeared when scaled up
 document.addEventListener('load', (e) => {
   const img = e.target;
   if (img.tagName === 'IMG' && img.parentElement && img.parentElement.classList.contains('inst-icon-img')) {
@@ -230,7 +255,7 @@ function findInstance(id) {
   return state.instances.find(i => i.id === id) || null;
 }
 
-/** The build whose mods page is open. */
+/** the build whose mods page is open. */
 function modsInstance() {
   return state.modsTarget ? findInstance(state.modsTarget) : null;
 }
@@ -239,7 +264,7 @@ function hasMods(inst) {
   return inst && inst.loader !== 'vanilla';
 }
 
-// ================= DIALOG =================
+// dialog
 function dialog({ title, text = '', input = null, okText = 'OK', cancelText = t('Отмена'), extraText = null, danger = false }) {
   return new Promise(resolve => {
     const modal = $('modal-dialog');
@@ -276,13 +301,15 @@ function dialog({ title, text = '', input = null, okText = 'OK', cancelText = t(
 function openModal(id) { $(id).classList.remove('hidden'); }
 function closeModal(el) { el.closest('.modal').classList.add('hidden'); }
 
-// ================= INIT =================
+// init
 document.addEventListener('DOMContentLoaded', async () => {
   setupWindowControls();
   setupUpdateButton();
   setupNavigation();
   setupSegmented();
   setupModals();
+  setupHomeLayoutEditor();
+  loadLauncherNews();
   setupAccounts();
   setupHome();
   setupInstances();
@@ -306,8 +333,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (new URLSearchParams(location.search).get('page') === 'settings') showPage('settings');
   renderGreeting();
   renderTip();
-  loadWeekStats();
-  // Builds and versions first; accounts, Java and the rest fill in around them
+  loadPlaytimeStats();
+  // builds and versions first; accounts, Java and the rest fill in around them
   const accountsLoaded = loadAccounts();
   loadSyncCategories();
   loadJavaList();
@@ -322,9 +349,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   appendLog('info', t('[LAUNCHER]: AeterMC готов к работе'));
 });
 
-// ================= WINDOW =================
-// Boot screen: a short pause after loading so icons and images settle, then a fade.
-// If something fails during start, it still goes away after a few seconds.
+// window
+// boot screen: a short pause after loading so icons and images settle, then a fade.
+// if something fails during start, it still goes away after a few seconds.
 const BOOT_SETTLE_MS = 250;
 const bootFallback = setTimeout(() => hideBootScreen(), 8000);
 
@@ -351,8 +378,8 @@ function setupWindowControls() {
   });
 }
 
-// ================= LAUNCHER UPDATE =================
-// The button left of the window controls, the update menu and its row in the settings;
+// launcher update
+// the button left of the window controls, the update menu and its row in the settings;
 // checking, downloading and swapping happen in updater.js
 const UPDATE_MANUAL_HINTS = {
   portable: t('Портативная версия обновляется новым файлом: скачайте его со страницы релиза'),
@@ -390,7 +417,7 @@ function renderUpdateButton() {
   btn.title = view[2];
 }
 
-/** One line about the update for the settings page. */
+/** one line about the update for the settings page. */
 function updateStatusText(u) {
   if (u.reason === 'package-manager') return t('Лаунчер установлен через пакетный менеджер');
   if (u.status === 'available' || u.status === 'manual') return t('Доступна версия {version}', { version: u.version });
@@ -493,7 +520,7 @@ function renderRelease(r) {
   </div>`;
 }
 
-/** Release notes are Markdown (the Build workflow writes "- " lists): lists, headings, **bold**, `code`, links as text. */
+/** release notes are Markdown (the Build workflow writes "- " lists): lists, headings, **bold**, `code`, links as text. */
 function releaseNotesHtml(text) {
   const inline = (s) => esc(s)
     .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
@@ -541,9 +568,10 @@ function setupUpdateButton() {
   });
 }
 
-// ================= NAVIGATION =================
+// navigation
 function showPage(name) {
-  // A build's mods page lives under "Сборки"
+  if (name !== 'home') closeHomeLayoutEditor();
+  // a build's mods page lives under "Сборки"
   const navTab = ['mods', 'modrinth-packs'].includes(name) ? 'instances' : name;
   document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.tab === navTab));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${name}`));
@@ -555,14 +583,15 @@ function showPage(name) {
   if (name === 'screenshots') loadScreenshots(true);
 }
 
-// ================= GAMEPAD =================
+// gamepad
 let gamepadNav = null;
 
 function setupGamepad() {
   if (typeof createGamepadNav !== 'function') return;
   gamepadNav = createGamepadNav({
-    // B with nothing open: a build's mods go back to the builds, other pages to the home page
+    // b with nothing open: a build's mods go back to the builds, other pages to the home page
     onBack: () => {
+      if (closeHomeLayoutEditor(true)) return;
       const page = document.querySelector('.page.active');
       const name = page ? page.id.replace('page-', '') : 'home';
       if (name === 'mods') showPage('instances');
@@ -580,22 +609,26 @@ function setupGamepad() {
 
 function applySidebarCollapsed(collapsed) {
   document.body.classList.toggle('sidebar-collapsed', collapsed);
-  $('btn-sidebar-toggle').title = collapsed ? t('Развернуть меню') : t('Свернуть меню');
+  const label = collapsed ? t('Развернуть меню') : t('Свернуть меню');
+  document.querySelectorAll('[data-sidebar-toggle]').forEach(button => {
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  });
 }
 
 function setupNavigation() {
-  // A clicked button keeps focus, and the next key press (or a gamepad that Steam turns into keys)
+  // a clicked button keeps focus, and the next key press (or a gamepad that Steam turns into keys)
   // draws the browser's focus ring on it out of nowhere. Buttons let go of focus after a mouse click.
   document.addEventListener('click', (e) => {
     if (!e.detail) return; // a keyboard or scripted click
     const el = e.target.closest && e.target.closest('button, a[href], [tabindex]');
     if (el && document.activeElement === el) el.blur();
   });
-  $('btn-sidebar-toggle').addEventListener('click', () => {
+  document.querySelectorAll('[data-sidebar-toggle]').forEach(button => button.addEventListener('click', () => {
     const collapsed = !document.body.classList.contains('sidebar-collapsed');
     applySidebarCollapsed(collapsed);
     saveSettings({ sidebarCollapsed: collapsed });
-  });
+  }));
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', () => showPage(item.dataset.tab));
   });
@@ -625,27 +658,40 @@ function setupSegmented() {
 
 function setupModals() {
   $('modrinth-preview-close').addEventListener('click', closeModrinthPreview);
+  setupNewsPreview();
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', () => closeModal(btn));
   });
   document.querySelectorAll('.modal').forEach(m => {
     m.addEventListener('mousedown', (e) => {
+      if (e.target === m && m.id === 'modal-layout-recent') {
+        closeRecentLayoutDialog();
+        return;
+      }
       if (e.target === m && m.id === 'modal-modrinth-preview') closeModrinthPreview();
-      if (e.target === m && !['modal-dialog', 'modal-sync', 'modal-ms', 'modal-prism', 'modal-mrpack-import', 'modal-mrpack-export', 'modal-modrinth-preview'].includes(m.id)) m.classList.add('hidden');
+      if (e.target === m && m.id === 'modal-news') closeNewsPreview();
+      if (e.target === m && !['modal-dialog', 'modal-sync', 'modal-ms', 'modal-prism', 'modal-mrpack-import', 'modal-mrpack-export', 'modal-modrinth-preview', 'modal-news'].includes(m.id)) m.classList.add('hidden');
     });
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (openMenuEl) {
+      const anchor = document.querySelector('.menu-anchor-open');
       openMenuEl.close();
+      anchor?.focus({ preventScroll: true });
       return;
     }
     const open = [...document.querySelectorAll('.modal:not(.hidden)')].pop();
-    if (!open) return;
+    if (!open) {
+      if (!clearLayoutDrag()) closeHomeLayoutEditor(true);
+      return;
+    }
     if (open.id === 'modal-dialog') $('dialog-cancel').click();
     else if (open.id === 'modal-sync') $('sync-close').click();
     else if (open.id === 'modal-ms') closeMicrosoftLogin();
     else if (open.id === 'modal-prism') $('prism-cancel').click();
+    else if (open.id === 'modal-news') closeNewsPreview();
+    else if (open.id === 'modal-layout-recent') closeRecentLayoutDialog();
     else if (open.id === 'modal-modrinth-preview') $('modrinth-preview-close').click();
     else if (open.id === 'modal-mrpack-import') $('mrpack-import-cancel').click();
     else if (open.id === 'modal-mrpack-export') $('mrpack-export-cancel').click();
@@ -653,7 +699,7 @@ function setupModals() {
   });
 }
 
-// ================= ACCOUNTS =================
+// accounts
 async function loadAccounts() {
   try {
     const data = await api.getAccounts();
@@ -793,7 +839,7 @@ function setupAccounts() {
   $('input-acc-ely-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') loginEly(); });
 }
 
-// ================= MICROSOFT LOGIN =================
+// microsoft login
 const msLogin = { code: null, attempt: 0, timer: null };
 
 function setMsStatus(text, type = 'wait') {
@@ -867,7 +913,7 @@ function closeMicrosoftLogin() {
   $('modal-ms').classList.add('hidden');
 }
 
-// ================= SETTINGS =================
+// settings
 async function loadSettings() {
   try {
     state.settings = await api.getSettings();
@@ -892,6 +938,8 @@ async function loadSettings() {
   $('check-fullscreen').checked = !!s.fullscreen;
   $('check-snapshots').checked = !!s.showSnapshots;
   $('check-prism').checked = s.prismImport === true;
+  renderExternalFolders();
+  applyHomeLayout(s.homeLayout);
   $('check-show-console').checked = s.showConsole === true;
   $('check-native-titlebar').checked = s.nativeTitlebar === true;
   $('check-auto-updates').checked = s.autoCheckModUpdates !== false;
@@ -900,7 +948,7 @@ async function loadSettings() {
   applySidebarCollapsed(!!s.sidebarCollapsed);
   $('check-animations').checked = s.animations !== false;
   document.documentElement.classList.toggle('no-motion', s.animations === false);
-  // The URL theme is the one from window creation; after Ctrl+R the saved setting is newer
+  // the URL theme is the one from window creation; after Ctrl+R the saved setting is newer
   document.documentElement.dataset.theme = currentThemeId();
   renderThemePicker();
   updateWindowIcon();
@@ -909,6 +957,7 @@ async function loadSettings() {
   $('input-jvm-args').value = s.customJvmArgs || '';
   $('select-jvm-preset').value = s.jvmPreset || 'auto';
   $('check-discord').checked = s.discordPresence !== false;
+  $('check-launch-profiling').checked = s.launchProfiling === true;
   $('check-gamepad').checked = s.gamepad !== false;
   if (gamepadNav) gamepadNav.setEnabled(s.gamepad !== false);
 }
@@ -920,10 +969,12 @@ function updateRamLabels() {
 
 async function saveSettings(partial) {
   try {
-    await api.saveSettings(partial);
+    if (await api.saveSettings(partial) === false) throw new Error(t('Не удалось записать файл настроек'));
     Object.assign(state.settings, partial);
+    return true;
   } catch (e) {
     toast(t('Не удалось сохранить настройки: {error}', { error: errText(e) }), 'error');
+    return false;
   }
 }
 
@@ -960,6 +1011,9 @@ function setupSettings() {
   ['input-res-w', 'input-res-h', 'input-jvm-args'].forEach(id => $(id).addEventListener('input', saveSettingsFromForm));
   ['check-fullscreen', 'select-launch-action', 'select-java', 'select-jvm-preset'].forEach(id => $(id).addEventListener('change', saveSettingsFromForm));
   $('check-discord').addEventListener('change', () => saveSettings({ discordPresence: $('check-discord').checked }));
+  $('check-launch-profiling').addEventListener('change', () => saveSettings({
+    launchProfiling: $('check-launch-profiling').checked
+  }));
 
   $('check-gamepad').addEventListener('change', () => {
     const on = $('check-gamepad').checked;
@@ -987,8 +1041,11 @@ function setupSettings() {
   });
 
   $('check-prism').addEventListener('change', async () => {
-    await saveSettings({ prismImport: $('check-prism').checked });
-    await loadVersionsAndInstances();
+    const check = $('check-prism');
+    check.disabled = true;
+    if (await saveSettings({ prismImport: check.checked })) await refreshSharedInstances();
+    else check.checked = state.settings.prismImport === true;
+    check.disabled = false;
   });
 
   // the main process reloads the windows in the new language
@@ -1028,23 +1085,97 @@ function setupSettings() {
   });
 }
 
-// ---------- Prism import (copy) ----------
+// ---------- external instances ----------
 let prismImporting = false;
+let externalRefresh = 0;
+let externalFolderPicker = false;
+
+async function refreshSharedInstances() {
+  const request = ++externalRefresh;
+  try {
+    const instances = await api.listInstances();
+    if (request !== externalRefresh) return;
+    state.instances = instances;
+    if (state.modsTarget && !findInstance(state.modsTarget)) {
+      state.modsTarget = null;
+      if ($('page-mods').classList.contains('active')) showPage('instances');
+    }
+    renderAll();
+  } catch (e) { toast(errText(e), 'error'); }
+}
+
+function renderExternalFolders() {
+  const container = $('mmc-folders');
+  const folders = Array.isArray(state.settings.externalInstanceFolders) ? state.settings.externalInstanceFolders : [];
+  container.replaceChildren(...folders.map(folder => {
+    const row = document.createElement('div');
+    row.className = 'setting external-folder';
+    const label = document.createElement('span');
+    label.className = 'setting-hint';
+    label.textContent = folder;
+    const remove = document.createElement('button');
+    remove.className = 'icon-btn';
+    remove.innerHTML = icon('x');
+    remove.setAttribute('aria-label', t('Убрать папку из списка'));
+    remove.addEventListener('click', async () => {
+      remove.disabled = true;
+      try {
+        state.settings.externalInstanceFolders = await api.removeExternalInstanceFolder(folder);
+        renderExternalFolders();
+        $('mmc-add-folder').focus();
+        if (state.settings.prismImport) await refreshSharedInstances();
+      } catch (e) {
+        toast(errText(e), 'error');
+        remove.disabled = false;
+      }
+    });
+    row.append(label, remove);
+    return row;
+  }));
+}
+
+async function addExternalFolder(fromImport = false) {
+  if (externalFolderPicker || prismImporting) return;
+  externalFolderPicker = true;
+  const buttons = [$('mmc-add-folder'), $('prism-add-folder')];
+  buttons.forEach(button => { button.disabled = true; });
+  updatePrismStartButton();
+  try {
+    const folders = await api.addExternalInstanceFolder();
+    if (!folders) return;
+    state.settings.externalInstanceFolders = folders;
+    renderExternalFolders();
+    if (state.settings.prismImport) await refreshSharedInstances();
+    if (fromImport && !$('modal-prism').classList.contains('hidden')) await openPrismImport();
+  } catch (e) { toast(errText(e), 'error'); }
+  finally {
+    externalFolderPicker = false;
+    buttons.forEach(button => { button.disabled = false; });
+    updatePrismStartButton();
+  }
+}
 
 async function openPrismImport() {
   const list = $('prism-list');
   $('prism-status').textContent = '';
+  $('prism-status').className = 'form-status';
   $('prism-progress').classList.add('hidden');
+  $('prism-start').disabled = true;
   list.innerHTML = `<div class="empty empty-sm"><p>${t('Поиск сборок…')}</p></div>`;
   openModal('modal-prism');
 
   let builds = [];
   try {
     builds = await api.listPrismInstances();
-  } catch (e) {}
+  } catch (e) {
+    list.textContent = '';
+    $('prism-status').className = 'form-status error';
+    $('prism-status').textContent = errText(e);
+    return;
+  }
   list.innerHTML = '';
   if (!builds.length) {
-    list.innerHTML = `<div class="empty empty-sm"><p>${t('Сборки Prism Launcher не найдены')}</p></div>`;
+    list.innerHTML = `<div class="empty empty-sm"><p>${t('Совместимые сборки не найдены')}</p></div>`;
     $('prism-start').disabled = true;
     return;
   }
@@ -1057,7 +1188,7 @@ async function openPrismImport() {
       <input type="checkbox" value="${esc(b.key)}" ${b.alreadyImported ? '' : 'checked'}>
       <span class="grow">
         <div>${esc(b.name)}</div>
-        <div class="meta">${esc(loader)}Minecraft ${esc(b.version)}${b.modCount ? ` · ${pluralize(b.modCount, ['мод', 'мода', 'модов'])}` : ''}${b.alreadyImported ? ` · ${t('уже импортирована')}` : ''}</div>
+        <div class="meta">${esc(b.source)} · ${esc(loader)}Minecraft ${esc(b.version)}${b.modCount ? ` · ${pluralize(b.modCount, ['мод', 'мода', 'модов'])}` : ''}${b.alreadyImported ? ` · ${t('уже импортирована')}` : ''}</div>
       </span>
       <span class="size">${formatSize(b.sizeBytes)}</span>
     `;
@@ -1069,7 +1200,7 @@ async function openPrismImport() {
 
 function updatePrismStartButton() {
   const n = document.querySelectorAll('#prism-list input:checked').length;
-  $('prism-start').disabled = !n || prismImporting;
+  $('prism-start').disabled = !n || prismImporting || externalFolderPicker;
   $('prism-start').textContent = n ? `${t('Скопировать')} (${n})` : t('Скопировать');
 }
 
@@ -1085,6 +1216,7 @@ async function startPrismImport() {
   if (!keys.length) return;
 
   prismImporting = true;
+  $('prism-add-folder').disabled = true;
   updatePrismStartButton();
   document.querySelectorAll('#prism-list input').forEach(i => { i.disabled = true; });
   $('prism-progress').classList.remove('hidden');
@@ -1111,6 +1243,7 @@ async function startPrismImport() {
   } finally {
     off();
     prismImporting = false;
+    $('prism-add-folder').disabled = false;
     document.querySelectorAll('#prism-list input').forEach(i => { i.disabled = false; });
     updatePrismStartButton();
   }
@@ -1118,6 +1251,11 @@ async function startPrismImport() {
 
 function setupPrismImport() {
   $('btn-prism-import').addEventListener('click', () => openPrismImport());
+  $('prism-add-folder').addEventListener('click', () => addExternalFolder(true));
+  $('mmc-add-folder').addEventListener('click', () => addExternalFolder());
+  window.addEventListener('focus', () => {
+    if (state.settings.prismImport && !externalFolderPicker && !prismImporting) refreshSharedInstances();
+  });
   $('prism-start').addEventListener('click', startPrismImport);
   const close = () => {
     if (prismImporting) {
@@ -1133,7 +1271,7 @@ function setupPrismImport() {
 // ---------- Modrinth modpacks (.mrpack) ----------
 const mrpackUi = { file: null, busy: false, exportId: null, exported: null };
 
-// Known top-level folders and files of a build, as shown in the export list
+// known top-level folders and files of a build, as shown in the export list
 const PACK_ENTRY_LABELS = {
   mods: t('моды'), config: t('настройки модов'), defaultconfigs: t('настройки модов по умолчанию'),
   resourcepacks: t('ресурспаки'), shaderpacks: t('шейдеры'), saves: t('миры'), screenshots: t('скриншоты'),
@@ -1279,7 +1417,7 @@ function setExportFormat(format) {
   resetMrpackExportResult();
 }
 
-// After an export the button shows the file; any change makes it export again
+// after an export the button shows the file; any change makes it export again
 function resetMrpackExportResult() {
   if (mrpackUi.busy) return;
   mrpackUi.exported = null;
@@ -1579,7 +1717,7 @@ function renderThemePicker() {
   if (!$('setup').classList.contains('hidden')) renderSetupThemes();
 }
 
-/** Draws the logo in the theme accent and makes it the window/taskbar icon. */
+/** draws the logo in the theme accent and makes it the window/taskbar icon. */
 async function updateWindowIcon() {
   const symbol = document.getElementById('i-logo');
   if (!symbol || !api.setWindowIcon) return;
@@ -1610,8 +1748,8 @@ function applyTheme(id) {
   renderThemePicker();
 }
 
-// ================= FIRST-RUN SETUP =================
-// Shown on the very first start, or when the launcher is started with --setup.
+// first-run setup
+// shown on the very first start, or when the launcher is started with --setup.
 const setup = { steps: [], index: 0, prismCount: 0, java: [] };
 
 function setupRequested() {
@@ -1653,7 +1791,7 @@ function renderSetupStep(direction = 1) {
   if (name === 'theme') renderSetupThemes();
   if (name === 'java') renderSetupJava();
   if (name === 'prism') {
-    $('setup-prism-text').textContent = t('Найдено сборок в Prism Launcher: {n}. Как их подключить?', { n: setup.prismCount });
+    $('setup-prism-text').textContent = t('Найдено совместимых сборок: {n}. Как их подключить?', { n: setup.prismCount });
     document.querySelectorAll('[data-prism]').forEach(b => b.classList.toggle('selected', b.dataset.prism === setup.prismChoice));
   }
   if (name === 'memory') renderSetupMemory();
@@ -1728,7 +1866,7 @@ function onJavaProgress(p) {
   if (state.isLaunching) setProgress(p.total ? Math.round((p.received / p.total) * 100) : null, `Java ${p.major}: ${text.toLowerCase()}`);
 }
 
-/** The top of a memory slider: all of this computer's RAM but 2 GB left for Windows, at least 2 GB. */
+/** the top of a memory slider: all of this computer's RAM but 2 GB left for Windows, at least 2 GB. */
 function ramSliderMax(totalGb) {
   return Math.max(2, Math.round(totalGb) - 2);
 }
@@ -1809,7 +1947,7 @@ function setupSetup() {
   api.onJavaInstallProgress(onJavaProgress);
 }
 
-// ================= JAVA =================
+// java
 function ensureJavaOption(p) {
   const select = $('select-java');
   if ([...select.options].some(o => o.value === p)) return;
@@ -1841,11 +1979,12 @@ async function loadJavaList(force = false) {
   select.value = state.settings.javaPath || '';
 }
 
-// ================= VERSIONS & INSTANCES =================
+// versions & instances
 async function loadVersionsAndInstances() {
-  const [versionsRes, instancesRes] = await Promise.allSettled([
+  const [versionsRes, instancesRes, iconsRes] = await Promise.allSettled([
     api.getVersions(!!state.settings.showSnapshots),
-    api.listInstances()
+    api.listInstances(),
+    api.getDefaultInstanceIcons()
   ]);
 
   if (versionsRes.status === 'fulfilled') {
@@ -1855,6 +1994,7 @@ async function loadVersionsAndInstances() {
     toast(t('Не удалось загрузить версии: {error}', { error: errText(versionsRes.reason) }), 'error');
   }
   state.instances = instancesRes.status === 'fulfilled' ? instancesRes.value : [];
+  state.blockIcons = iconsRes.status === 'fulfilled' ? iconsRes.value : {};
 
   if (state.modsTarget && !findInstance(state.modsTarget)) {
     state.modsTarget = null;
@@ -1889,10 +2029,10 @@ function pluralize(n, forms) {
   return i18n.plural(n, forms);
 }
 
-/** Icon color the hero landscape is tinted with: the block's top face, or the accent for pictures. */
+/** icon color the hero landscape is tinted with: the block's top face, or the accent for pictures. */
 function heroTint(inst) {
   if (!inst || inst.iconImage) return 'var(--color-accent)';
-  const block = BLOCKS.find(b => b.name === inst.iconBlock) || autoBlock(inst);
+  const block = BLOCKS.find(b => b.name === inst.iconBlock) || BLOCKS[0];
   return `var(--color-block-${block.name}-top)`;
 }
 
@@ -1928,16 +2068,25 @@ function emptyBuilds() {
     </div>`;
 }
 
-const RECENT_SLOTS = 5;
-
-function renderRecent() {
+function renderRecent({ layout = homeLayoutDraft || normalizeHomeLayout(state.settings.homeLayout), onlyIfCapacityChanged = false } = {}) {
   const list = $('recent-instances');
+  const width = list.clientWidth;
+  const inSide = !!list.closest('.home-side');
+  const autoColumns = inSide ? 1 : width > 0 && width <= 430 ? 2 : HOME_RECENT_COLUMNS_MAX;
+  const columnsThatFit = width ? Math.max(1, Math.floor((width + 8) / 100)) : HOME_RECENT_COLUMNS_MAX;
+  const columns = layout.recentColumns ? Math.min(layout.recentColumns, columnsThatFit) : autoColumns;
+  const slots = layout.recentRows ? layout.recentRows * columns : HOME_RECENT_COLUMNS_MAX;
+  list.style.setProperty('--recent-columns', Math.min(columns, Math.max(1, Math.min(slots, state.instances.length + 1))));
+  list.classList.toggle('recent-list', inSide && columns === 1);
+  if (onlyIfCapacityChanged && Number(list.dataset.slots) === slots) return;
+  list.dataset.slots = slots;
+
   list.innerHTML = '';
   if (!state.instances.length) {
     list.innerHTML = emptyBuilds();
     return;
   }
-  const recent = state.instances.slice(0, RECENT_SLOTS);
+  const recent = state.instances.slice(0, slots);
   recent.forEach(inst => {
     const card = document.createElement('div');
     card.className = `rcard ${inst.id === state.selected ? 'selected' : ''}`;
@@ -1964,8 +2113,7 @@ function renderRecent() {
     });
     list.appendChild(card);
   });
-  // The row always holds RECENT_SLOTS tiles: the "new build" tile only fills a free slot.
-  if (recent.length >= RECENT_SLOTS) return;
+  if (recent.length >= slots) return;
   const add = document.createElement('button');
   add.className = 'rcard rcard-new';
   add.dataset.newInstance = '';
@@ -1981,9 +2129,13 @@ function renderGreeting() {
   const acc = activeAccount();
   $('home-greeting').textContent = acc ? `${hello}, ${acc.username}` : hello;
 }
-setInterval(renderGreeting, 10 * 60 * 1000);
+setInterval(() => {
+  renderGreeting();
+  if (renderedPlaytimeDay && renderedPlaytimeDay !== dayKey(new Date())) loadPlaytimeStats();
+}, 10 * 60 * 1000);
 
 const WEEKDAYS = [t('Пн'), t('Вт'), t('Ср'), t('Чт'), t('Пт'), t('Сб'), t('Вс')];
+let renderedPlaytimeDay = '';
 
 function dayKey(date) {
   const p = (n) => String(n).padStart(2, '0');
@@ -1997,28 +2149,114 @@ function formatWeekTotal(seconds) {
   return t('{h} ч', { h: (h < 10 ? Math.round(h * 10) / 10 : Math.round(h)).toLocaleString(i18n.locale()) });
 }
 
-/** Monday to Sunday of the current week, from the per-day log the main process keeps. */
-async function loadWeekStats() {
-  const days = await api.getPlaytimeDays().catch(() => ({}));
-  const today = new Date();
+function playtimeOnDay(days, date) {
+  const seconds = days[dayKey(date)];
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+}
+
+function playtimeAmount(seconds) {
+  return seconds > 0 && seconds < 60 ? t('<1 мин') : formatPlaytime(seconds);
+}
+
+function playtimeDayTitle(date, seconds, { future = false, today = false } = {}) {
+  const options = { day: 'numeric', month: 'long' };
+  if (!today) options.weekday = 'long';
+  const formatted = date.toLocaleDateString(i18n.locale(), options);
+  const dateLabel = today ? t('Сегодня, {date}', { date: formatted }) : formatted;
+  const time = future ? t('Будущий день') : seconds ? playtimeAmount(seconds) : t('не играли');
+  return `${dateLabel}: ${time}`;
+}
+
+function renderWeekStats(days, today) {
   const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7);
   const week = WEEKDAYS.map((label, i) => {
     const date = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
-    return { label, seconds: days[dayKey(date)] || 0, today: i === (today.getDay() + 6) % 7, date };
+    return { label, seconds: playtimeOnDay(days, date), today: i === (today.getDay() + 6) % 7, date };
   });
   const max = Math.max(...week.map(d => d.seconds), 1);
   $('week-total').textContent = formatWeekTotal(week.reduce((sum, d) => sum + d.seconds, 0));
   $('week-chart').innerHTML = week.map(d => `
-    <div class="week-day ${d.today ? 'today' : ''}" title="${d.date.toLocaleDateString(i18n.locale(), { weekday: 'long', day: 'numeric', month: 'long' })}: ${d.seconds ? formatPlaytime(d.seconds) : t('не играли')}">
-      <div class="week-bar-wrap"><div class="week-bar" style="height:${Math.round(d.seconds / max * 100)}%"></div></div>
+    <div class="week-day ${d.today ? 'today' : ''}" aria-label="${esc(playtimeDayTitle(d.date, d.seconds))}">
+      <div class="week-bar-wrap"><div class="week-bar" style="--playtime-fill:${Math.round(d.seconds / max * 100)}%"></div></div>
       <span class="week-label">${d.label}</span>
+      <span class="week-value">${d.seconds ? esc(playtimeAmount(d.seconds)) : '—'}</span>
     </div>`).join('');
+}
+
+function renderMonthStats(days, today) {
+  const year = today.getFullYear(), month = today.getMonth(), todayDay = today.getDate();
+  const first = new Date(year, month, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const weeks = Math.ceil((offset + lastDay) / 7);
+  const body = $('month-days');
+  const focused = body.contains(document.activeElement) ? document.activeElement : null;
+  const focusedDate = focused?.closest('time')?.dateTime;
+  let total = 0;
+  $('month-period').textContent = first.toLocaleDateString(i18n.locale(), { month: 'long', year: 'numeric' });
+  body.innerHTML = WEEKDAYS.map((label, weekday) => {
+    const cells = Array.from({ length: weeks }, (_, week) => {
+      const day = week * 7 + weekday - offset + 1;
+      if (day < 1 || day > lastDay) return '<td></td>';
+      const date = new Date(year, month, day);
+      const future = day > todayDay;
+      const seconds = future ? 0 : playtimeOnDay(days, date);
+      const level = seconds ? [1800, 3600, 7200].filter(limit => seconds > limit).length + 1 : 0;
+      total += seconds;
+      const current = day === todayDay;
+      const title = esc(playtimeDayTitle(date, seconds, { future, today: current }));
+      const state = future ? ' future' : current ? ' today' : '';
+      return `<td><time datetime="${dayKey(date)}"><button type="button" class="month-cell${state}" data-day="${day}" data-level="${level}" tabindex="-1" aria-label="${title}"${current ? ' aria-current="date"' : ''}></button></time></td>`;
+    });
+    return `<tr><th scope="row">${label}</th>${cells.join('')}</tr>`;
+  }).join('');
+  $('month-total').textContent = playtimeAmount(total);
+  const currentDay = body.querySelector('.today');
+  const day = (focusedDate && body.querySelector(`time[datetime="${focusedDate}"] button`)) || currentDay;
+  day.tabIndex = 0;
+  if (focused) day.focus({ preventScroll: true });
+  const shown = body.querySelector('[data-day]:hover') || (day.matches(':focus-visible') ? day : currentDay);
+  $('month-day-detail').textContent = shown.getAttribute('aria-label');
+}
+
+function setupMonthCalendar() {
+  const body = $('month-days');
+  const showDay = (day = body.querySelector('.today')) => {
+    if (day) $('month-day-detail').textContent = day.getAttribute('aria-label');
+  };
+  body.addEventListener('pointerover', e => {
+    if (e.pointerType !== 'touch') showDay(e.target.closest('[data-day]') || undefined);
+  });
+  body.addEventListener('pointerleave', e => {
+    if (e.pointerType !== 'touch') showDay();
+  });
+  body.addEventListener('focusin', e => {
+    body.querySelector('[tabindex="0"]')?.setAttribute('tabindex', '-1');
+    e.target.tabIndex = 0;
+    showDay(e.target);
+  });
+  body.addEventListener('click', e => e.target.closest('[data-day]')?.focus({ preventScroll: true }));
+  body.addEventListener('keydown', e => {
+    const delta = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7 }[e.key];
+    if (!delta || !e.target.dataset.day) return;
+    const next = Number(e.target.dataset.day) + delta;
+    body.querySelector(`[data-day="${next}"]`)?.focus({ preventScroll: true });
+    e.preventDefault();
+  });
+}
+
+async function loadPlaytimeStats() {
+  const days = await api.getPlaytimeDays().catch(() => ({}));
+  const today = new Date();
+  renderWeekStats(days, today);
+  renderMonthStats(days, today);
+  renderedPlaytimeDay = dayKey(today);
 }
 
 const TIPS = [
   t('Перетащи .jar на страницу модов сборки — мод добавится сам.'),
   t('Нажми на иконку сборки на главной, чтобы сменить её на блок или свою картинку.'),
-  t('Сборки из Prism Launcher можно не копировать: включи синхронизацию в настройках.'),
+  t('В разделе «MultiMC (и его форки)» включи синхронизацию, чтобы запускать сборки из исходных папок.'),
   t('Лаунчер сам переносит бинды и настройки графики между сборками — это настраивается в «Переносе настроек игры».'),
   t('Нужную Java лаунчер подберёт и скачает сам под каждую версию Minecraft.'),
   t('Все скриншоты из всех сборок собраны во вкладке «Скриншоты».'),
@@ -2043,13 +2281,13 @@ function loaderLine(inst) {
   return `${loader}Minecraft ${inst.version}`;
 }
 
-/** Build icon with a small "synced with Prism" badge on its corner. */
 function syncedIconHtml(inst) {
   if (!inst.isPrism) return instanceIconHtml(inst);
-  return `<div class="sync-icon-wrap">${instanceIconHtml(inst)}<span class="sync-badge" title="${t('Синхронизируется с Prism Launcher')}">${icon('link')}</span></div>`;
+  const hint = t('Исходный лаунчер: {source}', { source: inst.externalSource || 'MultiMC' });
+  return `<div class="sync-icon-wrap">${instanceIconHtml(inst)}<span class="sync-badge" title="${esc(hint)}">${icon('link')}</span></div>`;
 }
 
-/** The build's content page: mods, resource packs and shaders; a build without a loader has only resource packs. */
+/** the build's content page: mods, resource packs and shaders; a build without a loader has only resource packs. */
 function contentLabel(inst) {
   return hasMods(inst) ? t('Моды, ресурспаки и шейдеры') : t('Ресурспаки');
 }
@@ -2094,7 +2332,7 @@ function buildActions(inst) {
   };
 }
 
-/** Card "⋯" menu: the same actions as the list row buttons. */
+/** card "⋯" menu: the same actions as the list row buttons. */
 function buildMenuItems(inst, acts) {
   return [
     { label: contentLabel(inst), icon: hasMods(inst) ? 'puzzle' : 'image', run: acts.mods },
@@ -2124,7 +2362,7 @@ function bindBuildActions(el, inst) {
 // ---------- mod problems before launch, crash explanation ----------
 let problemsInstanceId = null;
 
-/** A fix from mod-check.js / crash-analyzer.js: { type: 'disable'|'loader'|'search'|'mods'|'launch-settings', … } */
+/** a fix from mod-check.js / crash-analyzer.js: { type: 'disable'|'loader'|'search'|'mods'|'launch-settings', … } */
 async function runFix(instanceId, fix, button) {
   const inst = findInstance(instanceId);
   try {
@@ -2243,7 +2481,7 @@ function setupProblems() {
 }
 
 // ---------- developer tools (settings, only in `npm start` or with --dev) ----------
-// They live in dev-tools.js, which is kept out of git (.gitignore): without the file there are none.
+// they live in dev-tools.js, which is kept out of git (.gitignore): without the file there are none.
 function setupDevTools() {
   if (!state.settings.isDev) return;
   const script = document.createElement('script');
@@ -2257,7 +2495,7 @@ function setupDevTools() {
 let launchTargetId = null;
 
 const JVM_PRESET_LABELS = {
-  auto: () => t('Автоматически'), g1: () => t('G1 — флаги Aikar'), zgc: () => t('ZGC — для 8+ ГБ'), none: () => t('Без флагов')
+  auto: () => t('Автоматически'), g1: () => t('G1 — флаги Aikar'), zgc: () => t('ZGC — для 8+ ГБ'), shenandoah: () => t('Shenandoah — низкие паузы'), none: () => t('Без флагов')
 };
 
 function updateLaunchSections() {
@@ -2382,10 +2620,10 @@ function renderIconPicker() {
   $('icon-picker-reset').disabled = !inst.iconImage && !inst.iconBlock;
   $('icon-picker-prism').classList.toggle('hidden', !inst.isPrism);
   const grid = $('icon-picker-grid');
-  grid.classList.toggle('hidden', inst.isPrism); // Prism stores only image icons
+  grid.classList.toggle('hidden', inst.isPrism); // prism stores only image icons
   $('icon-picker-blocks-label').classList.toggle('hidden', inst.isPrism);
   grid.innerHTML = '';
-  const current = inst.iconImage ? null : (inst.iconBlock || autoBlock(inst).name);
+  const current = inst.iconImage ? null : inst.iconBlock;
   for (const block of BLOCKS) {
     const b = document.createElement('button');
     b.className = `icon-choice ${block.name === current ? 'active' : ''}`;
@@ -2458,6 +2696,7 @@ let openMenuEl = null;
 
 function closeMenu() {
   if (!openMenuEl) return;
+  document.querySelector('.menu-anchor-open')?.classList.remove('menu-anchor-open');
   openMenuEl.remove();
   openMenuEl = null;
   document.removeEventListener('mousedown', onMenuOutside, true);
@@ -2470,12 +2709,11 @@ function onMenuOutside(e) {
   if (openMenuEl && !openMenuEl.contains(e.target) && !e.target.closest('.menu-anchor-open')) closeMenu();
 }
 
-/** Small popup menu under `anchor`. items: [{ label, icon, run, danger } | 'separator'] */
-function openMenu(anchor, items) {
+/** small popup menu under `anchor` or at `point`. */
+function openMenu(anchor, items, point) {
   const wasOpen = anchor.classList.contains('menu-anchor-open');
-  document.querySelectorAll('.menu-anchor-open').forEach(a => a.classList.remove('menu-anchor-open'));
   closeMenu();
-  if (wasOpen) return; // second click on the same button closes it
+  if (wasOpen && !point) return; // second click on the same button closes it
 
   const menu = document.createElement('div');
   menu.className = 'menu';
@@ -2487,10 +2725,11 @@ function openMenu(anchor, items) {
     }
     const b = document.createElement('button');
     b.className = `menu-item ${item.danger ? 'danger' : ''}`;
-    b.setAttribute('role', 'menuitem');
-    b.innerHTML = `${icon(item.icon, 'ic-sm')}<span>${esc(item.label)}</span>`;
+    b.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
+    if (item.checked !== undefined) b.setAttribute('aria-checked', String(item.checked));
+    const itemIcon = item.checked === undefined ? item.icon : 'check';
+    b.innerHTML = `${icon(itemIcon, 'ic-sm')}<span>${esc(item.label)}</span>`;
     b.addEventListener('click', () => {
-      anchor.classList.remove('menu-anchor-open');
       closeMenu();
       item.run();
     });
@@ -2499,30 +2738,21 @@ function openMenu(anchor, items) {
   document.body.appendChild(menu);
   anchor.classList.add('menu-anchor-open');
 
-  // right-aligned under the button; flips above or left when it would leave the window
   const a = anchor.getBoundingClientRect();
   const m = menu.getBoundingClientRect();
-  let left = a.right - m.width;
-  let top = a.bottom + 4;
-  if (left < 8) left = Math.min(a.left, window.innerWidth - m.width - 8);
-  if (top + m.height > window.innerHeight - 8) top = a.top - m.height - 4;
-  menu.style.left = `${Math.max(8, left)}px`;
+  const left = point?.x ?? (a.right - m.width >= 8 ? a.right - m.width : a.left);
+  let top = point?.y ?? a.bottom + 4;
+  if (top + m.height > window.innerHeight - 8) top = (point?.y ?? a.top - 4) - m.height;
+  menu.style.left = `${Math.max(8, Math.min(left, window.innerWidth - m.width - 8))}px`;
   menu.style.top = `${Math.max(8, top)}px`;
 
   openMenuEl = menu;
-  const close = () => {
-    anchor.classList.remove('menu-anchor-open');
-    closeMenu();
-  };
-  menu.close = close;
-  setTimeout(() => {
-    document.addEventListener('mousedown', onMenuOutside, true);
-    window.addEventListener('blur', close);
-    window.addEventListener('resize', close);
-    document.addEventListener('scroll', close, true);
-  });
-  const first = menu.querySelector('.menu-item');
-  if (first) first.focus();
+  menu.close = closeMenu;
+  document.addEventListener('mousedown', onMenuOutside, true);
+  window.addEventListener('blur', closeMenu);
+  window.addEventListener('resize', closeMenu);
+  document.addEventListener('scroll', closeMenu, true);
+  menu.querySelector('.menu-item')?.focus({ preventScroll: true });
 }
 
 function renderInstanceGrid() {
@@ -2581,7 +2811,7 @@ function renderInstanceGrid() {
 }
 
 // ---------- background mod update check ----------
-// Silent: results are only shown inside a build's mods page; this just keeps the scan cache warm
+// silent: results are only shown inside a build's mods page; this just keeps the scan cache warm
 // so that page opens with update info right away.
 const UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
 const updateCheck = { running: false };
@@ -2681,7 +2911,7 @@ function updateCreateButton() {
   $('btn-create-instance').disabled = newInstanceForm.creating || !newInstanceForm.loaderReady;
 }
 
-// Dims loaders that have no builds for the chosen Minecraft version, then fills the version list
+// dims loaders that have no builds for the chosen Minecraft version, then fills the version list
 function refreshLoaderChoice() {
   const mcVersion = $('select-inst-version').value;
   MOD_LOADERS.forEach(loader => {
@@ -2755,12 +2985,12 @@ function openNewInstanceModal() {
   $('input-inst-name').focus();
 }
 
-// ================= MODS =================
-// A build's content page: its mods, resource packs or shaders (modsUi.kind), installed and in the Modrinth catalog.
+// mods
+// a build's content page: its mods, resource packs or shaders (modsUi.kind), installed and in the Modrinth catalog.
 // state.mods: local files of that kind, enriched with Modrinth data once a scan finishes
 const modsUi = { kind: 'mod', filter: 'all', scanning: null, scanned: false, online: true, busy: new Set() };
 
-// Texts and catalog categories of each kind (the kinds themselves are in src/content-types.js)
+// texts and catalog categories of each kind (the kinds themselves are in src/content-types.js)
 const CONTENT_KINDS = {
   mod: {
     icon: 'puzzle', ext: 'jar', count: (n) => pluralize(n, ['мод', 'мода', 'модов']),
@@ -2785,7 +3015,7 @@ const CONTENT_KINDS = {
   }
 };
 
-/** What a build can hold: without a loader only resource packs (shaders need Iris or OptiFine, which are mods). */
+/** what a build can hold: without a loader only resource packs (shaders need Iris or OptiFine, which are mods). */
 function contentKinds(inst) {
   if (!inst) return [];
   return inst.loader === 'vanilla' ? ['resourcepack'] : ['mod', 'resourcepack', 'shader'];
@@ -2828,7 +3058,7 @@ function openBuildMods(id, { filter = null, kind = null } = {}) {
   showPage('mods');
 }
 
-/** The kind switch, the texts and the catalog categories for the chosen kind. */
+/** the kind switch, the texts and the catalog categories for the chosen kind. */
 function renderContentKind(inst) {
   const kinds = contentKinds(inst);
   const info = kindInfo();
@@ -2903,7 +3133,7 @@ async function installShaderLoader() {
   renderShaderNotice();
 }
 
-/** Lists local files at once, then asks Modrinth what they are and whether updates exist. */
+/** lists local files at once, then asks Modrinth what they are and whether updates exist. */
 async function loadMods({ force = false } = {}) {
   const inst = modsInstance();
   if (!inst) return;
@@ -2989,7 +3219,7 @@ function renderModsList() {
       : t('Modrinth недоступен — показаны только файлы'));
   }
 
-  // Before the Modrinth check there are no updates yet: keep the requested filter until it is done
+  // before the Modrinth check there are no updates yet: keep the requested filter until it is done
   if (modsUi.scanned) {
     if (modsUi.filter === 'updates' && !updates.length) modsUi.filter = 'all';
     if (modsUi.filter === 'incompatible' && !incompatible.length) modsUi.filter = 'all';
@@ -3158,7 +3388,7 @@ function setupMods() {
     if (filePath) addModFiles([filePath]);
   });
 
-  // Drag & drop: files of the open kind into the open build, or the selected build
+  // drag & drop: files of the open kind into the open build, or the selected build
   const overlay = $('drop-overlay');
   let dragDepth = 0;
   const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
@@ -3202,7 +3432,7 @@ function setupMods() {
     else if (e.dataTransfer?.files?.length) toast(t('Сюда подходят только файлы {ext}', { ext }), 'error');
   });
 
-  // Modrinth
+  // modrinth
   let timer;
   $('modrinth-search-input').addEventListener('input', () => {
     clearTimeout(timer);
@@ -3224,7 +3454,7 @@ async function searchModrinth() {
   if (!inst) return;
   list.innerHTML = catalogSkeleton();
 
-  // Installed state of catalog entries comes from the scan
+  // installed state of catalog entries comes from the scan
   if (!modsUi.scanned) scanMods().then(() => {
     if (reqId === modrinthRequest && lastHits) renderModrinthResults(lastHits);
   });
@@ -3250,7 +3480,7 @@ async function searchModrinth() {
 
 let lastHits = null;
 
-// Modrinth content categories; loader tags (fabric, iris, ...) are left out on purpose
+// modrinth content categories; loader tags (fabric, iris, ...) are left out on purpose
 const CATEGORY_LABELS = {
   adventure: t('приключения'), cursed: t('странное'), decoration: t('декор'), economy: t('экономика'),
   equipment: t('снаряжение'), food: t('еда'), 'game-mechanics': t('механики'), library: t('библиотека'),
@@ -3343,7 +3573,7 @@ function renderModrinthResults(hits) {
   });
 }
 
-// ================= GAME SETTINGS TRANSFER =================
+// game settings transfer
 const SYNC_MODES = [['always', t('Всегда')], ['ask', t('Спрашивать')], ['never', t('Никогда')]];
 
 async function loadSyncCategories() {
@@ -3394,7 +3624,7 @@ function pluralChanges(n) {
 }
 
 /**
- * Shows the transfer dialog. Resolves with the chosen category ids, or null when skipped.
+ * shows the transfer dialog. Resolves with the chosen category ids, or null when skipped.
  * manual: lets the user pick the source profile.
  */
 function syncDialog({ targetId, sourceId, diff, details = {}, categories, manual }) {
@@ -3496,7 +3726,7 @@ function syncDialog({ targetId, sourceId, diff, details = {}, categories, manual
   });
 }
 
-/** Called before launch: applies "always" categories and asks about "ask" ones. */
+/** called before launch: applies "always" categories and asks about "ask" ones. */
 async function maybeSyncOptions(targetId) {
   const modes = syncModes();
   if (state.syncCategories.every(c => (modes[c.id] || 'ask') === 'never')) return;
@@ -3509,7 +3739,7 @@ async function maybeSyncOptions(targetId) {
   }
   if (!check.source) return;
 
-  // Don't ask again about the same source state the user already decided on
+  // don't ask again about the same source state the user already decided on
   const seen = (state.settings.optionsSyncSeen || {})[targetId];
   if (seen && seen.sourceId === check.source.id && seen.time === check.source.time) return;
 
@@ -3569,8 +3799,22 @@ async function openManualSync(targetId) {
   }
 }
 
-// ================= HOME / LAUNCH =================
+// home / launch
 function setupHome() {
+  setupMonthCalendar();
+  const recent = $('recent-instances');
+  let recentWidth = 0;
+  new ResizeObserver(([entry]) => {
+    const width = entry.contentRect.width;
+    if (!width || width === recentWidth) return;
+    recentWidth = width;
+    requestAnimationFrame(() => {
+      if (recent.clientWidth) renderRecent({ onlyIfCapacityChanged: true });
+    });
+  }).observe(recent);
+  window.addEventListener('focus', () => {
+    if (renderedPlaytimeDay) loadPlaytimeStats();
+  });
   $('btn-launch').addEventListener('click', async (e) => {
     // while the game runs the same button closes it
     if (!e.currentTarget.classList.contains('running')) return handleLaunch();
@@ -3702,13 +3946,13 @@ function setupSubscriptions() {
       $('log-indicator').classList.add('active', 'error');
     }
     refreshInstanceCounts().then(renderAll);
-    loadWeekStats();
+    loadPlaytimeStats();
     state.screenshots = null; // new screenshots may have been taken
     if ($('page-screenshots').classList.contains('active')) loadScreenshots();
   });
 }
 
-// ================= SCREENSHOTS =================
+// screenshots
 function visibleShots() {
   const all = state.screenshots || [];
   if (state.shotsFilter === 'all') return all;
@@ -3719,7 +3963,7 @@ function shotsSignature(list) {
   return (list || []).map(s => `${s.path}|${s.time}`).join('|');
 }
 
-/** Reads the folders again; the grid is redrawn only when something actually changed. */
+/** reads the folders again; the grid is redrawn only when something actually changed. */
 async function loadScreenshots(force = false) {
   if (state.screenshots && !force) return renderScreenshots();
   if (!state.screenshots) $('shots-list').innerHTML = `<div class="empty"><p>${t('Ищу скриншоты…')}</p></div>`;
@@ -3895,7 +4139,7 @@ function setupScreenshots() {
   });
 }
 
-// ================= LOGS =================
+// logs
 let logView;
 
 function setupLogs() {
@@ -3908,7 +4152,7 @@ function setupLogs() {
   });
   $('btn-detach-console').addEventListener('click', () => api.openConsoleWindow());
 
-  // Lines come back from the main process, which also feeds the detached console window
+  // lines come back from the main process, which also feeds the detached console window
   api.onLaunchLog((entry) => showLogLine(entry.type, entry.message));
   api.onLogsCleared(() => logView.clear());
   api.onConsoleWindow((open) => {
@@ -3921,7 +4165,7 @@ function scrollLogsToBottom() {
   if (logView) logView.scrollToBottom();
 }
 
-/** Sends a launcher message to the console (main window and detached window). */
+/** sends a launcher message to the console (main window and detached window). */
 function appendLog(type, message) {
   api.writeLog(type, message);
 }

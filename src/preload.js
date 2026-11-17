@@ -1,17 +1,17 @@
 /**
  * preload.js
- * Exposes a secure API bridge between Electron and the Renderer.
+ * exposes a secure API bridge between Electron and the Renderer.
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   platform: process.platform,
   isAppImage: process.platform === 'linux' && !!process.env.APPIMAGE,
-  // Settings
+  // settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
 
-  // Accounts
+  // accounts
   getAccounts: () => ipcRenderer.invoke('get-accounts'),
   setActiveAccount: (id) => ipcRenderer.invoke('set-active-account', id),
   addOfflineAccount: (username) => ipcRenderer.invoke('add-offline-account', username),
@@ -22,11 +22,14 @@ contextBridge.exposeInMainWorld('api', {
   loginElyBy: (username, password) => ipcRenderer.invoke('login-elyby', username, password),
   removeAccount: (id) => ipcRenderer.invoke('remove-account', id),
 
-  // Instances
+  // instances
   listInstances: () => ipcRenderer.invoke('list-instances'),
+  getDefaultInstanceIcons: () => ipcRenderer.invoke('default-instance-icons'),
   createInstanceShortcut: (id, iconDataUrl) => ipcRenderer.invoke('create-instance-shortcut', id, iconDataUrl),
   countPrismInstances: () => ipcRenderer.invoke('prism-instances-count'),
   listPrismInstances: () => ipcRenderer.invoke('prism-list'),
+  addExternalInstanceFolder: () => ipcRenderer.invoke('mmc-add-folder'),
+  removeExternalInstanceFolder: (folder) => ipcRenderer.invoke('mmc-remove-folder', folder),
   importPrismInstances: (keys) => ipcRenderer.invoke('prism-import', keys),
   onPrismImportProgress: (callback) => {
     const handler = (event, data) => callback(data);
@@ -58,7 +61,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteInstanceMod: (id, fileName, kind) => ipcRenderer.invoke('delete-instance-mod', id, fileName, kind),
   openInstanceFolder: (id) => ipcRenderer.invoke('open-instance-folder', id),
 
-  // Modrinth modpacks (.mrpack)
+  // modrinth modpacks (.mrpack)
   getModrinthProjectPreview: (id) => ipcRenderer.invoke('modrinth-project-preview', id),
   getModrinthPackVersions: (projectId) => ipcRenderer.invoke('modrinth-pack-versions', projectId),
   installModrinthPack: (projectId, versionId) => ipcRenderer.invoke('modrinth-pack-install', projectId, versionId),
@@ -80,18 +83,18 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('mrpack-progress', handler);
   },
 
-  // Game settings transfer
+  // game settings transfer
   getSyncCategories: () => ipcRenderer.invoke('options-sync-categories'),
   checkOptionsSync: (targetId, sourceId) => ipcRenderer.invoke('options-sync-check', targetId, sourceId),
   applyOptionsSync: (targetId, sourceId, categoryIds) => ipcRenderer.invoke('options-sync-apply', targetId, sourceId, categoryIds),
 
-  // Modrinth
+  // modrinth
   searchModrinth: (options) => ipcRenderer.invoke('search-modrinth', options),
   installModrinthMod: (projectId, instanceId, kind) => ipcRenderer.invoke('install-modrinth-mod', projectId, instanceId, kind),
   scanInstanceMods: (instanceId, force, kind) => ipcRenderer.invoke('scan-instance-mods', instanceId, force, kind),
   updateInstanceMod: (instanceId, fileName, kind) => ipcRenderer.invoke('update-instance-mod', instanceId, fileName, kind),
 
-  // Versions & Java
+  // versions & Java
   getVersions: (showSnapshots) => ipcRenderer.invoke('get-versions', showSnapshots),
   installFabric: (gameVersion, loaderVersion) => ipcRenderer.invoke('install-fabric', gameVersion, loaderVersion),
   getLoaderVersions: (loader, gameVersion) => ipcRenderer.invoke('get-loader-versions', loader, gameVersion),
@@ -109,17 +112,17 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('java-install-progress', handler);
   },
 
-  // Game Control
+  // game Control
   launchGame: (options) => ipcRenderer.invoke('launch-game', options),
   killGame: () => ipcRenderer.invoke('kill-game'),
   getGameState: () => ipcRenderer.invoke('get-game-state'),
 
-  // File and Folder Dialogs
+  // file and Folder Dialogs
   browseFile: (options) => ipcRenderer.invoke('browse-file', options),
   browseFolder: (options) => ipcRenderer.invoke('browse-folder', options),
   openFolder: (type) => ipcRenderer.invoke('open-folder', type),
 
-  // Home stats and screenshots
+  // home stats and screenshots
   getPlaytimeDays: () => ipcRenderer.invoke('get-playtime-days'),
   listScreenshots: () => ipcRenderer.invoke('list-screenshots'),
   revealScreenshot: (file) => ipcRenderer.invoke('screenshot-reveal', file),
@@ -134,17 +137,18 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('screenshots-changed', handler);
   },
 
-  // Window Controls
+  // window Controls
   setWindowIcon: (dataUrl) => ipcRenderer.send('window-icon', dataUrl),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
   maximizeWindow: () => ipcRenderer.send('window-maximize'),
   closeWindow: () => ipcRenderer.send('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
 
-  // Launcher update
+  // launcher update
   getUpdateState: () => ipcRenderer.invoke('update-get-state'),
   checkUpdate: () => ipcRenderer.invoke('update-check'),
   getUpdateReleases: () => ipcRenderer.invoke('update-releases'),
+  getReleaseNotes: tag => ipcRenderer.invoke('release-notes', tag),
   downloadUpdate: () => ipcRenderer.invoke('update-download'),
   restartToUpdate: () => ipcRenderer.invoke('update-restart'),
   openUpdatePage: (all) => ipcRenderer.invoke('update-open-page', all),
@@ -154,7 +158,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('update-state', handler);
   },
 
-  // Console
+  // console
   writeLog: (type, message) => ipcRenderer.send('write-log', { type, message }),
   getLogBuffer: () => ipcRenderer.invoke('get-log-buffer'),
   clearLogs: () => ipcRenderer.invoke('clear-logs'),
@@ -177,7 +181,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('theme-changed', handler);
   },
 
-  // Event Subscriptions
+  // event Subscriptions
   onWindowMaximized: (callback) => {
     const handler = (event, isMax) => callback(isMax);
     ipcRenderer.on('window-maximized', handler);

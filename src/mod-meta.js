@@ -1,9 +1,9 @@
 /**
  * mod-meta.js
- * What a mod jar says about itself: id, name, version, dependencies and conflicts, read from
+ * what a mod jar says about itself: id, name, version, dependencies and conflicts, read from
  * fabric.mod.json, quilt.mod.json or META-INF/(neoforge.)mods.toml, including jars bundled inside it
  * (Fabric API and many libraries ship their modules that way, so a dependency may be satisfied there).
- * Results are cached per file by size and modification time.
+ * results are cached per file by size and modification time.
  */
 const fs = require('fs');
 const path = require('path');
@@ -40,7 +40,7 @@ function compareVersions(a, b) {
 }
 
 /**
- * Does `version` satisfy a Fabric dependency predicate ("*", ">=0.19.5", "~1.2", "^3", "1.21.x",
+ * does `version` satisfy a Fabric dependency predicate ("*", ">=0.19.5", "~1.2", "^3", "1.21.x",
  * ">=1.20 <1.22", or an array of those meaning "any of")? Returns null when it cannot tell, so callers
  * never report a problem they are not sure about.
  */
@@ -83,7 +83,7 @@ function satisfies(version, predicate) {
   return unknown ? null : true;
 }
 
-/** Next version at position i: bump([1,2,3], 1) -> "1.3". */
+/** next version at position i: bump([1,2,3], 1) -> "1.3". */
 function bump(v, i) {
   const nums = v.nums.slice(0, i + 1);
   while (nums.length <= i) nums.push(0);
@@ -131,7 +131,7 @@ function readQuilt(json) {
   };
 }
 
-/** Minimal mods.toml reading: [[mods]] ids/versions and required [[dependencies.<id>]] entries. */
+/** minimal mods.toml reading: [[mods]] ids/versions and required [[dependencies.<id>]] entries. */
 function readToml(text, loader) {
   const mods = [];
   const deps = {};
@@ -156,7 +156,7 @@ function readToml(text, loader) {
     const depends = {};
     for (const d of deps[m.modId] || []) {
       const required = d.mandatory === 'true' || d.type === 'required' || (d.mandatory == null && d.type == null);
-      if (required && d.modId) depends[d.modId] = '*'; // Maven ranges are not checked
+      if (required && d.modId) depends[d.modId] = '*'; // maven ranges are not checked
     }
     return { loader, id: m.modId, name: m.displayName || m.modId, version: m.version || '', provides: [], depends, breaks: {}, environment: '*' };
   });
@@ -205,7 +205,7 @@ function readZipMeta(zip, depth) {
   return metas;
 }
 
-/** Mods declared by one jar: [{ loader, id, name, version, provides, depends, breaks, bundled? }] */
+/** mods declared by one jar: [{ loader, id, name, version, provides, depends, breaks, bundled? }] */
 function readJar(full) {
   let stat;
   try {
@@ -224,7 +224,7 @@ function readJar(full) {
   return meta;
 }
 
-/** All jars of a mods folder: [{ file, enabled, mods: [...] }], switched-off ones included. */
+/** all jars of a mods folder: [{ file, enabled, mods: [...] }], switched-off ones included. */
 function scanModsDir(dir) {
   let names = [];
   try {

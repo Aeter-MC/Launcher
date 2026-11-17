@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 
-// Read both original and new session filenames. Keep the journal separate from
+// read both original and new session filenames. Keep the journal separate from
 // instance.cfg so counting a session never invalidates its prepared plan.
 function readNativePlaytime(profile, now = Date.now()) {
   const totals = new Map(), days = {};

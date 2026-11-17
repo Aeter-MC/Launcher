@@ -1,10 +1,10 @@
 /**
  * main.js
- * Electron Main Process for AeterMC.
+ * electron Main Process for AeterMC.
  */
 
 // AeterMC-Setup.exe and `AeterMC.exe --uninstall` are this same app in installer mode
-// In the source tree the installer lives under installer/src.
+// in the source tree the installer lives under installer/src.
 const installerDir = require('fs').existsSync(require('path').join(__dirname, 'installer'))
   ? './installer'
   : '../installer/src';
@@ -22,14 +22,17 @@ const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, nativeImage, cl
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const AdmZip = require('adm-zip');
 const { acquireLaunchLock } = require('./launch-utils');
 
 const { SettingsManager, DEFAULT_MINECRAFT_DIR } = require('./settings-manager');
+const { manualSource, pathKey, realDirectory } = require('./multimc-sources');
+const { normalizeHomeLayout } = require('./renderer/home-layout');
 const i18n = require('./i18n/i18n');
 const { t } = i18n;
 const { VersionManager } = require('./version-manager');
 const { LoaderManager } = require('./loaders');
-const { detectJavaInstallations, pickJavaFor, checkJavaPath } = require('./java-detector');
+const { detectJavaInstallations, pickJavaFor, checkJavaPath, checkJavaGc } = require('./java-detector');
 const { DiscordPresence } = require('./discord-rpc');
 const { LauncherCore } = require('./launcher-core');
 const { AccountsManager } = require('./accounts-manager');
@@ -50,6 +53,7 @@ const optionsSync = require('./options-sync');
 const { describeChange } = require('./options-labels');
 const { DiskCache } = require('./disk-cache');
 const { PlaytimeLog } = require('./playtime-log');
+const { LaunchProfiler, formatLaunchProfile } = require('./launch-profiler');
 const { readNativePlaytime, withNativePlaytime } = require('./native-v2-playtime');
 const { Updater } = require('./updater');
 const { isPackageManagerInstall } = require('./installation');
@@ -65,10 +69,10 @@ const screenshots = require('./screenshots');
 const https = require('https');
 const axios = require('axios');
 
-// Reuse TLS connections to Mojang / Modrinth / Fabric instead of a new handshake per request
+// reuse TLS connections to Mojang / Modrinth / Fabric instead of a new handshake per request
 axios.defaults.httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 16 });
 
-// The UI is flat HTML without heavy animation: software rendering skips GPU process start-up
+// the UI is flat HTML without heavy animation: software rendering skips GPU process start-up
 // (window shows ~0.2 s sooner) and saves ~25 MB of memory.
 app.disableHardwareAcceleration();
 // same id as the installer's shortcuts, so the taskbar groups the window with the pinned shortcut
@@ -78,7 +82,7 @@ let mainWindow = null;
 let mainWindowNativeTitlebar = false;
 let consoleWindow = null;
 
-// Theme list generated from design/themes by `npm run tokens`
+// theme list generated from design/themes by `npm run tokens`
 let THEMES = [];
 try {
   THEMES = require('./themes.json');
@@ -89,12 +93,12 @@ function currentTheme() {
   return THEMES.find(t => t.id === id) || THEMES.find(t => t.id === 'dark-mono') || THEMES[0] || null;
 }
 
-/** The chosen language, or until one is chosen in the settings the system one. */
+/** the chosen language, or until one is chosen in the settings the system one. */
 function applyLanguage() {
   i18n.setLanguage(settingsManager.get().language || i18n.detectLanguage(app.getPreferredSystemLanguages()));
 }
 
-/** The pages get the language in the URL: after a change they are loaded again, the main one on the settings. */
+/** the pages get the language in the URL: after a change they are loaded again, the main one on the settings. */
 function reloadWindows() {
   const theme = currentTheme();
   const query = { theme: theme ? theme.id : '', lang: i18n.language() };
@@ -107,7 +111,7 @@ function reloadWindows() {
   }
 }
 
-/** Window background before the page paints, and the colors of native parts (title bar of the console window). */
+/** window background before the page paints, and the colors of native parts (title bar of the console window). */
 function applyThemeToWindows() {
   const theme = currentTheme();
   if (!theme) return;
@@ -126,33 +130,77 @@ const settingsManager = new SettingsManager(userDataDir);
 const currentSettings = settingsManager.get();
 i18n.setLanguage(currentSettings.language || 'ru');
 
-// Not "cache": on Windows that is the same folder as Chromium's own Cache, which it cleans on startup
+// not "cache": on Windows that is the same folder as Chromium's own Cache, which it cleans on startup
 const diskCache = new DiskCache(path.join(userDataDir, 'mcl-cache'));
 const versionManager = new VersionManager(currentSettings.gameDir, diskCache);
 const loaderManager = new LoaderManager(versionManager);
 const accountsManager = new AccountsManager(userDataDir, currentSettings.gameDir);
 const instancesManager = new InstancesManager(userDataDir, versionManager);
 instancesManager.includePrism = currentSettings.prismImport === true;
+instancesManager.externalFolders = Array.isArray(currentSettings.externalInstanceFolders)
+  ? currentSettings.externalInstanceFolders.filter(folder => typeof folder === 'string' && path.isAbsolute(folder)) : [];
 const modrinthManager = new ModrinthManager(diskCache);
 const mrpackManager = new MrpackManager(instancesManager, loaderManager, modrinthManager);
 const elyByManager = new ElyByManager(currentSettings.gameDir);
 const launcherCore = new LauncherCore();
 const playtimeLog = new PlaytimeLog(userDataDir);
+const launchProfiler = new LaunchProfiler(userDataDir);
 const discord = new DiscordPresence();
-// Launcher self-update from GitHub Releases (see updater.js)
+
+const BLOCK_TEXTURES = {
+  grass: 'grass_block_top',
+  stone: 'stone',
+  sand: 'sand',
+  planks: 'oak_planks',
+  snow: 'snow',
+  diamond: 'diamond_ore',
+  netherrack: 'netherrack',
+  'end-stone': 'end_stone',
+  obsidian: 'obsidian',
+  copper: 'copper_block',
+  ice: 'ice',
+  moss: 'moss_block'
+};
+let blockTextureCache = { gameDir: '', icons: null };
+
+function minecraftBlockTextures() {
+  if (blockTextureCache.gameDir === versionManager.gameDir && Object.keys(blockTextureCache.icons || {}).length) return blockTextureCache.icons;
+  const icons = {};
+  const versionsDir = path.join(versionManager.gameDir, 'versions');
+  if (fs.existsSync(versionsDir)) {
+    const jars = fs.readdirSync(versionsDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(versionsDir, entry.name, `${entry.name}.jar`))
+      .filter(file => fs.existsSync(file))
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    for (const jar of jars) {
+      try {
+        const zip = new AdmZip(jar);
+        for (const [name, texture] of Object.entries(BLOCK_TEXTURES)) {
+          const entry = zip.getEntry(`assets/minecraft/textures/block/${texture}.png`);
+          if (entry) icons[name] = `data:image/png;base64,${entry.getData().toString('base64')}`;
+        }
+        if (Object.keys(icons).length) break;
+      } catch (e) {}
+    }
+  }
+  blockTextureCache = { gameDir: versionManager.gameDir, icons };
+  return icons;
+}
+// launcher self-update from GitHub Releases (see updater.js)
 const updater = new Updater({
   currentVersion: app.getVersion(),
   electronVersion: process.versions.electron,
   resourcesDir: process.resourcesPath,
   exePath: app.getPath('exe'),
   portable: !!process.env.PORTABLE_EXECUTABLE_FILE,
-  // The in-place updater uses Windows tooling.
+  // the in-place updater uses Windows tooling.
   enabled: (app.isPackaged && process.platform === 'win32') || isAppImage,
   packageManaged,
   onChange: (state) => sendToWindow('update-state', state)
 });
 
-/** Checks for a launcher update; with "download automatically" on, a found one is downloaded right away. */
+/** checks for a launcher update; with "download automatically" on, a found one is downloaded right away. */
 async function checkForUpdate() {
   await updater.check();
   autoDownloadUpdate();
@@ -166,7 +214,7 @@ function autoDownloadUpdate() {
 }
 
 let javaCache = null;
-// Java the launcher downloaded itself lives here (see java-installer.js)
+// java the launcher downloaded itself lives here (see java-installer.js)
 const { JavaInstaller } = require('./java-installer');
 const javaInstaller = new JavaInstaller(path.join(userDataDir, 'runtimes'));
 
@@ -175,14 +223,14 @@ async function getJavaList(force = false) {
   return javaCache;
 }
 
-/** Downloads Temurin <major>, reporting progress to the window, and refreshes the Java list. */
+/** downloads Temurin <major>, reporting progress to the window, and refreshes the Java list. */
 async function installJava(major) {
   const exe = await javaInstaller.install(major, (p) => sendToWindow('java-install-progress', { major, ...p }));
   await getJavaList(true);
   return exe;
 }
 
-/** Java that fits a Minecraft version: an installed one, otherwise Temurin is downloaded. */
+/** java that fits a Minecraft version: an installed one, otherwise Temurin is downloaded. */
 async function javaForVersion(versionId, log = () => {}) {
   const required = await versionManager.getRequiredJava(versionId);
   const java = pickJavaFor(await getJavaList(), required);
@@ -197,7 +245,7 @@ async function javaForVersion(versionId, log = () => {}) {
   }
 }
 
-/** Major version of a java.exe (0 when unknown): from the detected list, otherwise `java -version`. */
+/** major version of a java.exe (0 when unknown): from the detected list, otherwise `java -version`. */
 async function javaMajorOf(javaPath) {
   if (!javaPath) return 0;
   const known = (await getJavaList()).find(j => path.resolve(j.path).toLowerCase() === path.resolve(javaPath).toLowerCase());
@@ -214,6 +262,12 @@ function showDiscordPresence(inst, versionLabel) {
     ? `${inst.loader !== 'vanilla' ? `${LoaderManager.label(inst.loader)} · ` : ''}Minecraft ${inst.version}`
     : t('Без сборки');
   discord.setActivity({ details, state, start: Date.now(), largeText: `AeterMC ${app.getVersion()}` }).catch(() => {});
+}
+
+function disableReloadShortcut(win) {
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 'r') event.preventDefault();
+  });
 }
 
 function createWindow() {
@@ -234,6 +288,7 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+  disableReloadShortcut(mainWindow);
 
   const theme = currentTheme();
   if (theme) nativeTheme.themeSource = theme.mode;
@@ -247,7 +302,7 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query });
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
-  // Open external links in the system browser instead of a new Electron window
+  // open external links in the system browser instead of a new Electron window
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -267,8 +322,8 @@ function createWindow() {
   });
 }
 
-// ================= CONSOLE =================
-// All log lines pass through here so a detached console window can show the full history.
+// console
+// all log lines pass through here so a detached console window can show the full history.
 const MAX_LOG_BUFFER = 4000;
 const logBuffer = [];
 
@@ -307,6 +362,7 @@ function openConsoleWindow() {
       nodeIntegration: false
     }
   });
+  disableReloadShortcut(consoleWindow);
   if (themedIcon) consoleWindow.setIcon(themedIcon);
   consoleWindow.loadFile(path.join(__dirname, 'renderer', 'console.html'), { query: { theme: theme ? theme.id : '', lang: i18n.language() } });
   consoleWindow.on('closed', () => {
@@ -352,10 +408,10 @@ app.on('window-all-closed', () => {
   }
 });
 
-// ================= IPC HANDLERS =================
+// ipc handlers
 
-// Window Controls
-// Icon drawn by the page in the current theme accent (see updateWindowIcon in app.js)
+// window Controls
+// icon drawn by the page in the current theme accent (see updateWindowIcon in app.js)
 let themedIcon = null;
 ipcMain.on('window-icon', (event, dataUrl) => {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) return;
@@ -389,7 +445,7 @@ ipcMain.handle('window-is-maximized', () => {
   return mainWindow ? mainWindow.isMaximized() : false;
 });
 
-// Settings
+// settings
 // the developer tools in the settings: `npm start`, or the built app started with --dev
 const IS_DEV = !app.isPackaged || process.argv.includes('--dev');
 
@@ -399,7 +455,11 @@ ipcMain.handle('get-settings', () => {
 });
 
 ipcMain.handle('save-settings', (event, newSettings) => {
+  newSettings = { ...newSettings };
+  delete newSettings.externalInstanceFolders;
+  if ('homeLayout' in newSettings) newSettings.homeLayout = normalizeHomeLayout(newSettings.homeLayout);
   const ok = settingsManager.save(newSettings);
+  if (!ok) return false;
   if ('theme' in newSettings) applyThemeToWindows();
   if ('language' in newSettings) {
     applyLanguage();
@@ -418,7 +478,7 @@ ipcMain.handle('save-settings', (event, newSettings) => {
   return ok;
 });
 
-// Accounts
+// accounts
 ipcMain.handle('get-accounts', () => {
   return accountsManager.getAccounts();
 });
@@ -431,7 +491,7 @@ ipcMain.handle('add-offline-account', (event, username) => {
   return accountsManager.addOfflineAccount(username);
 });
 
-// Microsoft login (device code, like Prism Launcher)
+// microsoft login (device code, like Prism Launcher)
 ipcMain.handle('ms-login-start', async () => {
   const code = await accountsManager.startMicrosoftLogin();
   const qr = await require('qrcode').toDataURL(code.linkUrl, { margin: 1, width: 360, color: { dark: '#000000', light: '#ffffff' } });
@@ -453,7 +513,7 @@ ipcMain.handle('ms-login-cancel', () => {
 });
 
 ipcMain.handle('ms-login-open-browser', (event, url) => {
-  // Only Microsoft's own sign-in page may be opened from here
+  // only Microsoft's own sign-in page may be opened from here
   if (/^https:\/\/(www\.)?microsoft\.com\/link/.test(url)) shell.openExternal(url);
 });
 
@@ -466,30 +526,60 @@ ipcMain.handle('remove-account', (event, id) => {
 });
 
 ipcMain.handle('prism-instances-count', () => {
-  return instancesManager.countPrismInstances();
+  return instancesManager.listExternalInstances().length;
 });
 
-ipcMain.handle('prism-list', () => instancesManager.listPrismInstances());
+ipcMain.handle('prism-list', () => instancesManager.listExternalImports());
 
-// Copies the chosen Prism builds one by one, reporting progress to the window
+function saveExternalFolders(folders) {
+  if (!settingsManager.save({ externalInstanceFolders: folders })) throw new Error(t('Не удалось сохранить папки сборок'));
+  instancesManager.externalFolders = folders;
+  return folders;
+}
+
+ipcMain.handle('mmc-add-folder', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: t('Выберите папку лаунчера или сборок'), properties: ['openDirectory']
+  });
+  if (canceled || !filePaths[0]) return null;
+  const folder = realDirectory(filePaths[0]);
+  const source = folder && manualSource(folder);
+  const own = pathKey(realDirectory(instancesManager.instancesDir) || instancesManager.instancesDir);
+  if (!source || pathKey(source.dir) === own || pathKey(source.dir).startsWith(own + path.sep)) {
+    throw new Error(t('В выбранной папке нет совместимых сборок'));
+  }
+  const folders = instancesManager.externalFolders;
+  if (folders.some(item => pathKey(manualSource(item)?.dir || item) === pathKey(source.dir))) return folders;
+  return saveExternalFolders([...folders, folder]);
+});
+
+ipcMain.handle('mmc-remove-folder', (event, folder) => {
+  return saveExternalFolders(instancesManager.externalFolders.filter(item => item !== folder));
+});
+
+// copies the chosen Prism builds one by one, reporting progress to the window
 ipcMain.handle('prism-import', async (event, keys) => {
+  if (!Array.isArray(keys)) return [];
+  keys = [...new Set(keys.filter(key => typeof key === 'string'))];
+  const candidates = instancesManager.listExternalInstances();
   const imported = [];
   for (let i = 0; i < keys.length; i++) {
-    const inst = await instancesManager.importPrismInstance(keys[i], (p) => {
+    const inst = await instancesManager.importExternalInstance(keys[i], (p) => {
       sendToWindow('prism-import-progress', { index: i, count: keys.length, ...p });
-    });
+    }, candidates);
     imported.push(inst);
   }
   return imported;
 });
 
-// Instances (MCL & Prism Launcher)
+// instances (MCL & Prism Launcher)
 ipcMain.handle('list-instances', () => {
   const instances = instancesManager.listInstances();
   return withNativePlaytime(instances, readNativePlaytime(userDataDir).totals);
 });
+ipcMain.handle('default-instance-icons', () => minecraftBlockTextures());
 
-// The loader is installed before the build folder appears, so a failed install leaves nothing behind
+// the loader is installed before the build folder appears, so a failed install leaves nothing behind
 ipcMain.handle('create-instance', async (event, options = {}) => {
   const { loader = 'vanilla', version } = options;
   if (loader === 'vanilla') return await instancesManager.createInstance(options);
@@ -518,7 +608,7 @@ ipcMain.handle('set-instance-loader', (event, instanceId, version) => {
   return instancesManager.setLoaderVersion(instanceId, String(version || ''));
 });
 
-// Mod problems of a build (mod-check.js), for the launch check and the build's page
+// mod problems of a build (mod-check.js), for the launch check and the build's page
 ipcMain.handle('check-instance-mods', (event, instanceId) => {
   const inst = findInstanceOrThrow(instanceId);
   return inst.loader === 'vanilla' ? { issues: [], mods: 0 } : checkBuild(inst);
@@ -547,7 +637,7 @@ function devSamplesOrThrow() {
   return devSamples;
 }
 
-/** Runs the real analyzer and opens the crash window as after a real crash. */
+/** runs the real analyzer and opens the crash window as after a real crash. */
 function showDevCrash(instanceId, input) {
   const inst = instanceId ? instancesManager.listInstances().find(i => i.id === instanceId) : null;
   const opt = resolveLaunchSettings(settingsManager.get(), inst);
@@ -610,7 +700,7 @@ ipcMain.handle('delete-instance-mod', (event, instanceId, fileName, kind = 'mod'
   return instancesManager.deleteInstanceMod(instanceId, fileName, kind);
 });
 
-// Modrinth modpacks (.mrpack)
+// modrinth modpacks (.mrpack)
 ipcMain.handle('mrpack-inspect', (event, file) => mrpackManager.inspect(file));
 
 ipcMain.handle('instance-zip-inspect', (event, file) => inspectInstanceZip(file));
@@ -651,7 +741,7 @@ ipcMain.handle('mrpack-export-entries', (event, instanceId) => {
   return mrpackManager.listExportEntries(findInstanceOrThrow(instanceId));
 });
 
-// The file is picked here, not by the page, so the page cannot write anywhere it likes
+// the file is picked here, not by the page, so the page cannot write anywhere it likes
 ipcMain.handle('mrpack-export', async (event, instanceId, options = {}) => {
   const inst = findInstanceOrThrow(instanceId);
   const name = String(options.name || '').trim() || inst.name;
@@ -694,7 +784,7 @@ ipcMain.handle('open-instance-folder', (event, instanceId) => {
   return false;
 });
 
-// Transfer of game settings (options.txt) between profiles
+// transfer of game settings (options.txt) between profiles
 function listSyncProfiles() {
   const root = settingsManager.get().gameDir || DEFAULT_MINECRAFT_DIR;
   return [
@@ -713,8 +803,8 @@ ipcMain.handle('options-sync-categories', () => {
   return optionsSync.CATEGORIES.map(c => ({ id: c.id, label: c.label }));
 });
 
-// Without sourceId picks the profile whose settings were changed most recently
-// Builds with "don't sync" are left out of the automatic transfer both ways; a manual one (sourceId) still works.
+// without sourceId picks the profile whose settings were changed most recently
+// builds with "don't sync" are left out of the automatic transfer both ways; a manual one (sourceId) still works.
 // details: per category the changed settings in plain words, for the dialog
 ipcMain.handle('options-sync-check', (event, targetId, sourceId) => {
   const target = findSyncProfile(targetId);
@@ -743,13 +833,13 @@ ipcMain.handle('options-sync-apply', (event, targetId, sourceId, categoryIds) =>
   return optionsSync.applyOptions(source.dir, target.dir, categoryIds);
 });
 
-// Modrinth
+// modrinth
 ipcMain.handle('search-modrinth', async (event, options) => {
   return await modrinthManager.searchMods(options);
 });
 
-// Mods, resource packs and shaders are installed only into a build
-// Version and loader always come from the build itself, never from the page
+// mods, resource packs and shaders are installed only into a build
+// version and loader always come from the build itself, never from the page
 function findContentInstance(instanceId, kind = 'mod') {
   contentType(kind);
   const inst = instancesManager.listInstances().find(i => i.id === instanceId);
@@ -775,7 +865,7 @@ ipcMain.handle('update-instance-mod', async (event, instanceId, fileName, kind =
   return await modrinthManager.updateMod(dir, fileName, inst.version, inst.loader, kind);
 });
 
-// Versions & Java
+// versions & Java
 ipcMain.handle('get-versions', async (event, showSnapshots) => {
   return await versionManager.getAllVersions(showSnapshots);
 });
@@ -798,7 +888,7 @@ ipcMain.handle('install-java', async (event, major) => {
   return await installJava(m);
 });
 
-// Java versions the launcher's builds need, and whether each is available
+// java versions the launcher's builds need, and whether each is available
 ipcMain.handle('java-requirements', async () => {
   const majors = new Set();
   for (const inst of instancesManager.listInstances()) {
@@ -814,7 +904,7 @@ ipcMain.handle('java-requirements', async () => {
   });
 });
 
-// File dialogs
+// file dialogs
 ipcMain.handle('browse-file', async (event, options = {}) => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: options.title || t('Выберите файл'),
@@ -868,14 +958,14 @@ ipcMain.handle('open-folder', async (event, type) => {
   return await shell.openPath(target);
 });
 
-// Weekly playtime chart on the home page
+// daily totals for the home page playtime cards
 ipcMain.handle('get-playtime-days', () => {
   const days = playtimeLog.read();
   for (const [day, seconds] of Object.entries(readNativePlaytime(userDataDir).days)) days[day] = (Number(days[day]) || 0) + seconds;
   return days;
 });
 
-// Screenshots page
+// screenshots page
 function currentScreenshotSources() {
   const root = settingsManager.get().gameDir || DEFAULT_MINECRAFT_DIR;
   return screenshots.screenshotSources(root, instancesManager.listInstances());
@@ -886,7 +976,7 @@ function checkedScreenshot(file) {
   return path.resolve(file);
 }
 
-// Folders are (re)watched on every listing, so new builds and changed .minecraft are picked up
+// folders are (re)watched on every listing, so new builds and changed .minecraft are picked up
 let stopScreenshotWatch = null;
 ipcMain.handle('list-screenshots', () => {
   const sources = currentScreenshotSources();
@@ -921,7 +1011,7 @@ function pngFromDataUrl(dataUrl) {
 }
 
 /**
- * Saves an edited screenshot next to the original: mode 'copy' as <name>-edited.png (-2, -3… when taken),
+ * saves an edited screenshot next to the original: mode 'copy' as <name>-edited.png (-2, -3… when taken),
  * 'replace' puts the original in the Recycle Bin and writes <name>.png in its place.
  */
 ipcMain.handle('screenshot-save', async (event, file, dataUrl, mode) => {
@@ -955,7 +1045,7 @@ ipcMain.handle('screenshot-delete', async (event, file) => {
   return true;
 });
 
-// Game Launching
+// game Launching
 function sendToWindow(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, data);
@@ -1026,22 +1116,40 @@ async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
   else launchInProgress = true;
   let releaseLock = null;
   let transferred = false;
+  const profile = !prepareOnly && settings.launchProfiling === true
+    ? launchProfiler.begin(inst.id)
+    : null;
+  let profileSaved = false;
+  const phase = async (name, work) => {
+    if (!profile) return work();
+    profile.start(name);
+    try { return await work(); } finally { profile.end(name); }
+  };
+  const saveProfile = (status, error = null) => {
+    if (!profile || profileSaved) return;
+    profileSaved = true;
+    const result = launchProfiler.save(profile.finish(status, error));
+    log(status === 'failed' ? 'warn' : 'info', `[PERF]: ${formatLaunchProfile(result)}`);
+  };
   try {
-    // Versions, libraries and assets are shared in root; saves/mods are per instance.
+    // versions, libraries and assets are shared in root; saves/mods are per instance.
     const instanceId = inst.id;
     const gameDir = inst.minecraftDir;
     const versionNumber = inst.version;
     let customVersion = null;
     releaseLock = acquireLaunchLock(gameDir);
-    const account = await accountsManager.getLaunchAccount((text) => log('warn', `[AUTH]: ${text}`));
+    const account = await phase('account', () => accountsManager.getLaunchAccount((text) => log('warn', `[AUTH]: ${text}`)));
 
     // mods that will not start together: asked before anything is downloaded or started
     if (inst.loader !== 'vanilla') {
+      profile?.start('mod-check');
       const check = checkBuild(inst);
+      profile?.end('mod-check');
       check.issues.filter(i => i.level === 'warn').forEach(i => log('warn', `[MODS]: ${i.text}`));
       const errors = check.issues.filter(i => i.level === 'error');
       if (errors.length && !launchOpts.ignoreModIssues) {
         errors.forEach(i => log('warn', `[MODS]: ${i.text}`));
+        saveProfile('blocked', errors.map(issue => issue.text).join('; '));
         return { success: false, modIssues: check.issues, instanceId: inst.id };
       }
     }
@@ -1049,12 +1157,12 @@ async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
     if (inst.loader !== 'vanilla') {
       // installed when the build was made; builds from Prism or a cleaned versions/ get it now
       log('info', `[LAUNCHER]: ${t('Подготовка {loader} {version} для {mc}', { loader: LoaderManager.label(inst.loader), version: inst.loaderVersion || '', mc: inst.version })}`);
-      const profile = await loaderManager.ensure(inst.loader, inst.version, inst.loaderVersion, {
+      const loaderProfile = await phase('loader', () => loaderManager.ensure(inst.loader, inst.version, inst.loaderVersion, {
         knownId: inst.versionId,
         onStatus: (text, { progress } = {}) => { if (!progress) log('info', `[LAUNCHER]: ${text}`); },
         getJava: () => javaForVersion(inst.version, log)
-      });
-      customVersion = profile.id;
+      }));
+      customVersion = loaderProfile.id;
     }
 
     // the build's own launch settings over the launcher ones (see instances-manager.js LAUNCH_KEYS)
@@ -1062,9 +1170,12 @@ async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
     if (Object.keys(own).length) log('info', `[LAUNCHER]: ${t('У сборки свои настройки запуска')}`);
     const opt = resolveLaunchSettings(settings, inst);
 
-    // Java: explicit choice from the build or settings, otherwise the one matching the version
-    const javaPath = opt.javaPath || await javaForVersion(customVersion || versionNumber, log);
-    const javaMajor = await javaMajorOf(javaPath);
+    // java: explicit choice from the build or settings, otherwise the one matching the version
+    const javaPath = opt.javaPath || await phase('java-discovery', () => javaForVersion(customVersion || versionNumber, log));
+    const javaMajor = await phase('java-version', () => javaMajorOf(javaPath));
+    const shenandoahSupported = opt.jvmPreset === 'shenandoah'
+      ? await phase('gc-check', () => checkJavaGc(javaPath, '-XX:+UseShenandoahGC'))
+      : null;
 
     log('info', `[LAUNCHER]: ${t('Версия {version}, папка игры: {dir}', { version: customVersion || versionNumber, dir: gameDir })}`);
 
@@ -1073,6 +1184,7 @@ async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
     const output = [];
     killedByUser = false;
 
+    profile?.start('launcher-core');
     const command = await launcherCore.launch(
       {
         account,
@@ -1087,6 +1199,7 @@ async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
         customJvmArgs: opt.customJvmArgs || '',
         jvmPreset: opt.jvmPreset || 'auto',
         javaMajor,
+        shenandoahSupported,
         profileJvmArgs: customVersion ? loaderManager.jvmArgs(customVersion) : [],
         resolutionWidth: opt.resolutionWidth || 1280,
         resolutionHeight: opt.resolutionHeight || 720,
@@ -1104,6 +1217,8 @@ async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
           emitLog(logData);
         },
         onLaunched: () => {
+          profile?.end('launcher-core');
+          saveProfile('launched');
           transferred = true;
           instancesManager.markLaunched(instanceId);
           runningInstanceId = instanceId;
@@ -1155,6 +1270,7 @@ async function launchGame(launchOpts = {}, { prepareOnly = false } = {}) {
     if (prepareOnly) return { success: true, command, account, customVersion };
     return { success: true };
   } catch (err) {
+    saveProfile('failed', err.message);
     if (!prepareOnly) sendToWindow('launch-error', err.message);
     return { success: false, error: err.message };
   } finally {
@@ -1171,10 +1287,11 @@ ipcMain.handle('get-game-state', () => ({
   launching: launchInProgress || !!launcherCore.isLaunching
 }));
 
-// Launcher update: the button left of the window controls and the update menu
+// launcher update: the button left of the window controls and the update menu
 ipcMain.handle('update-get-state', () => updater.state);
 ipcMain.handle('update-check', () => checkForUpdate());
 ipcMain.handle('update-releases', () => updater.releases());
+ipcMain.handle('release-notes', (_event, tag) => updater.releaseNotes(tag));
 ipcMain.handle('update-download', () => updater.download());
 ipcMain.handle('update-restart', () => {
   if (preparingShortcut || pendingShortcuts.size || launchInProgress || launcherCore.isRunning || launcherCore.isLaunching) {

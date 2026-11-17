@@ -1,6 +1,6 @@
 /**
  * log-view.js
- * Console output list shared by the main window and the detached console window.
+ * console output list shared by the main window and the detached console window.
  */
 const MAX_LOG_LINES = 4000;
 
@@ -15,7 +15,7 @@ function createLogView(container) {
   container.classList.add('hide-debug');
 
   return {
-    /** Adds a line, keeps the view pinned to the bottom if it already was. Returns the level. */
+    /** adds a line, keeps the view pinned to the bottom if it already was. Returns the level. */
     append(type, message) {
       const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 60;
       const level = classifyLog(type, message);
@@ -37,7 +37,7 @@ function createLogView(container) {
     scrollToBottom() {
       container.scrollTop = container.scrollHeight;
     },
-    /** Visible text, without hidden debug lines. */
+    /** visible text, without hidden debug lines. */
     text() {
       const hideDebug = container.classList.contains('hide-debug');
       return [...container.children]

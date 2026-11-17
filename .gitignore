@@ -43,3 +43,4 @@ src/dev-samples.js
 /.test-state/
 /.test-data/
 /.test-output/
+test/

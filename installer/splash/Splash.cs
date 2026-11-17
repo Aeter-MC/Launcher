@@ -1,9 +1,9 @@
-﻿// Splash.cs — the window AeterMC-Setup.exe shows while it unpacks the app.
-// Compiled by installer/build-splash.js with the C# compiler that ships with Windows (.NET Framework 4).
-// The /*@...@*/ placeholders are filled in by that script: theme colors and the logo polygons.
+﻿// splash.cs — the window AeterMC-Setup.exe shows while it unpacks the app.
+// compiled by installer/build-splash.js with the C# compiler that ships with Windows (.NET Framework 4).
+// the /*@...@*/ placeholders are filled in by that script: theme colors and the logo polygons.
 //
-// Usage: splash.exe <pid of the setup stub>
-// Closes itself when the installer window ("Установка AeterMC") appears, when the stub exits,
+// usage: splash.exe <pid of the setup stub>
+// closes itself when the installer window ("Установка AeterMC") appears, when the stub exits,
 // or after three minutes.
 using System;
 using System.Diagnostics;
@@ -67,8 +67,8 @@ class SplashForm : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        // Windows 11: native rounded corners and a 1px border in the theme's line color
-        int round = 2; // DWMWCP_ROUND
+        // windows 11: native rounded corners and a 1px border in the theme's line color
+        int round = 2; // dWMWCP_ROUND
         bool rounded = DwmSetWindowAttribute(Handle, 33, ref round, 4) == 0;
         int border = ColorTranslator.ToWin32(Theme.Line);
         DwmSetWindowAttribute(Handle, 34, ref border, 4);
@@ -143,7 +143,7 @@ class SplashForm : Form
         double t = clock.Elapsed.TotalSeconds;
         float cx = ClientSize.Width / 2f;
 
-        // Logo: the same slow pulse as the installer's progress screen (1.6 s, down to 55% / 94%)
+        // logo: the same slow pulse as the installer's progress screen (1.6 s, down to 55% / 94%)
         double pulse = (1 - Math.Cos(t / 1.6 * 2 * Math.PI)) / 2;
         float logoSize = 64 * scale * (float)(1 - 0.06 * pulse);
         float logoAlpha = (float)(1 - 0.45 * pulse);
@@ -160,13 +160,13 @@ class SplashForm : Form
                 g.FillPolygon(b, poly);
         }
 
-        // Title and caption
+        // title and caption
         using (var tb = new SolidBrush(Theme.Text))
             g.DrawString("AeterMC", titleFont, tb, new PointF(cx, 124 * scale), center);
         using (var cb = new SolidBrush(Theme.Muted))
             g.DrawString("Подготовка установки…", captionFont, cb, new PointF(cx, 152 * scale), center);
 
-        // Indeterminate bar: a quarter of the track slides across and back in (1.1 s, like the launcher's)
+        // indeterminate bar: a quarter of the track slides across and back in (1.1 s, like the launcher's)
         float tw = 160 * scale, th = 3 * scale, tx = cx - tw / 2, ty = 192 * scale;
         using (var track = RoundRect(new RectangleF(tx, ty, tw, th), th / 2))
         using (var tb = new SolidBrush(Theme.Line))

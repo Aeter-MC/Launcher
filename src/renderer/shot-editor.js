@@ -1,10 +1,10 @@
 /**
  * shot-editor.js
- * Screenshot editor opened from the viewer: crop, rotate, flip, a brush and brightness /
+ * screenshot editor opened from the viewer: crop, rotate, flip, a brush and brightness /
  * contrast / saturation. The picture is held as two canvases of the same size: `base` (the
  * screenshot itself) and `ink` (brush strokes). Crop / rotate / flip change both; the sliders
  * are a CSS filter applied to `base` only, so the brush keeps its color. Export draws both.
- * The image comes from the main process as a data: URL — a file: image would taint the canvas.
+ * the image comes from the main process as a data: URL — a file: image would taint the canvas.
  */
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -124,7 +124,7 @@
       : `${base.width} × ${base.height}`;
   }
 
-  /** Screen point -> picture pixel. */
+  /** screen point -> picture pixel. */
   function toPicture(e) {
     const rect = $('editor-canvas').getBoundingClientRect();
     return {

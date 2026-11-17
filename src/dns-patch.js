@@ -1,8 +1,8 @@
 /**
  * dns-patch.js
- * Ensures DNS resolution works reliably by resolving via Google DNS & Cloudflare DNS
+ * ensures DNS resolution works reliably by resolving via Google DNS & Cloudflare DNS
  * directly through dns.promises.Resolver, avoiding OS getaddrinfo bottlenecks or misconfigured DNS.
- * Falls back to the system resolver whenever the public DNS servers fail.
+ * falls back to the system resolver whenever the public DNS servers fail.
  */
 const dns = require('dns');
 const net = require('net');
@@ -11,7 +11,7 @@ try {
   const resolver = new dns.promises.Resolver({ timeout: 3000, tries: 2 });
   resolver.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4', '77.88.8.8']);
 
-  // Game downloads hit the same few hosts thousands of times; resolving each request again is wasted time
+  // game downloads hit the same few hosts thousands of times; resolving each request again is wasted time
   const DNS_TTL_MS = 60 * 1000;
   const answers = new Map(); // hostname -> { addrs, expires }
 

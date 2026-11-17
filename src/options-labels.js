@@ -3,7 +3,7 @@
  * options.txt keys and values in plain words for the transfer dialog:
  * "renderDistance: 12 -> 16" becomes "Дальность прорисовки: 12 → 16",
  * "key_key.jump: key.keyboard.space" becomes "Клавиша «Прыжок»: Space".
- * Keys without a name here (mods add their own) are shown as they are.
+ * keys without a name here (mods add their own) are shown as they are.
  */
 const { t, plural } = require('./i18n/i18n');
 const pluralize = plural;

@@ -1,6 +1,6 @@
 /**
  * elyby-manager.js
- * Handles Ely.by authentication via Yggdrasil API and manages authlib-injector.jar.
+ * handles Ely.by authentication via Yggdrasil API and manages authlib-injector.jar.
  */
 const fs = require('fs');
 const path = require('path');
@@ -28,7 +28,7 @@ class ElyByManager {
   }
 
   /**
-   * Ensures authlib-injector.jar is downloaded into gameDir.
+   * ensures authlib-injector.jar is downloaded into gameDir.
    */
   async ensureInjector() {
     const jarPath = this.getInjectorPath();
@@ -56,7 +56,7 @@ class ElyByManager {
   }
 
   /**
-   * Authenticates with Ely.by credentials.
+   * authenticates with Ely.by credentials.
    */
   async authenticate(usernameOrEmail, password) {
     const clientToken = crypto.randomUUID();
@@ -83,7 +83,7 @@ class ElyByManager {
         throw new Error(t('Профиль Ely.by не найден для данного аккаунта.'));
       }
 
-      // Download injector in advance
+      // download injector in advance
       await this.ensureInjector();
 
       return {
@@ -106,8 +106,8 @@ class ElyByManager {
   }
 
   /**
-   * Validates the access token and refreshes it if it has expired.
-   * Returns updated token fields, or null when nothing changed.
+   * validates the access token and refreshes it if it has expired.
+   * returns updated token fields, or null when nothing changed.
    */
   async refreshIfNeeded(account) {
     try {
@@ -133,7 +133,7 @@ class ElyByManager {
   }
 
   /**
-   * Returns JVM arguments required for Ely.by injection.
+   * returns JVM arguments required for Ely.by injection.
    */
   async getJvmArgs() {
     const jarPath = await this.ensureInjector();

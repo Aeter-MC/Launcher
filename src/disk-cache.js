@@ -1,6 +1,6 @@
 /**
  * disk-cache.js
- * Small JSON files in userData/mcl-cache that survive restarts (version list, Java list, mod hashes).
+ * small JSON files in userData/mcl-cache that survive restarts (version list, Java list, mod hashes).
  */
 const fs = require('fs');
 const path = require('path');
@@ -34,7 +34,7 @@ class DiskCache {
     } catch (e) {}
   }
 
-  /** Coalesces frequent writes (e.g. many hashes in a row) into one. */
+  /** coalesces frequent writes (e.g. many hashes in a row) into one. */
   writeLater(name, getData, delay = 1500) {
     clearTimeout(this.timers.get(name));
     this.timers.set(name, setTimeout(() => this.write(name, getData()), delay));

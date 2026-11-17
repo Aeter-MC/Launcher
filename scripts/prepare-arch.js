@@ -1,4 +1,4 @@
-/** Stage an offline makepkg recipe for the archive from build-linux.sh. */
+/** stage an offline makepkg recipe for the archive from build-linux.sh. */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');

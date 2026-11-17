@@ -1,6 +1,6 @@
 /**
  * java-installer.js
- * Downloads Eclipse Temurin (Adoptium) JRE builds into the launcher's own folder,
+ * downloads Eclipse Temurin (Adoptium) JRE builds into the launcher's own folder,
  * so a game can start even if the right Java is not installed on the system.
  */
 const fs = require('fs');
@@ -43,7 +43,7 @@ class JavaInstaller {
   }
 
   /**
-   * Installs Temurin JRE <major> for the current platform. onProgress({ stage, received, total, version })
+   * installs Temurin JRE <major> for the current platform. onProgress({ stage, received, total, version })
    * stage: 'info' | 'download' | 'extract' | 'done'
    */
   install(major, onProgress = () => {}) {

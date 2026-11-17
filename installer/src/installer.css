@@ -1,4 +1,4 @@
-/* Installer window. Base components (buttons, inputs, switches, progress) come from the launcher's style.css. */
+/* installer window. Base components (buttons, inputs, switches, progress) come from the launcher's style.css. */
 
 .setup-app { flex: 1; display: flex; min-height: 0; }
 

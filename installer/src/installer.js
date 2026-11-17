@@ -1,6 +1,6 @@
 /**
  * installer.js
- * Page of the installer / uninstaller window. The work itself happens in installer-main.js.
+ * page of the installer / uninstaller window. The work itself happens in installer-main.js.
  */
 const $ = (id) => document.getElementById(id);
 
@@ -33,7 +33,7 @@ function renderSteps(current) {
   }).join('');
 }
 
-/** Shows a screen and sets the footer buttons: [label, handler] or null to hide. */
+/** shows a screen and sets the footer buttons: [label, handler] or null to hide. */
 function show(screen, { primary = null, secondary = null, note = '' } = {}) {
   document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.dataset.screen === screen));
   renderSteps(screen);

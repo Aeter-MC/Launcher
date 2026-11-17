@@ -39,7 +39,7 @@ function assertLocalPath(file, name = 'path') {
   validString(file, name);
   if (!path.isAbsolute(file)) throw new Error(`${name} must be absolute`);
   const resolved = path.resolve(file);
-  // Reject links on every existing component, not only the final file.
+  // reject links on every existing component, not only the final file.
   for (let current = resolved; ; current = path.dirname(current)) {
     if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) throw new Error(`${name} contains a symlink or junction`);
     if (path.dirname(current) === current) break;
@@ -106,7 +106,7 @@ function credentialsFor(account, authorization) {
 
 function replaceIdentity(args, credentials) {
   const fields = new Map([['--accessToken', 'accessToken'], ['--session', 'accessToken'], ['--username', 'username'], ['--uuid', 'uuid'], ['--xuid', 'xuid'], ['--clientId', 'clientId']]);
-  // Long secrets are replaced inside composite values too. Short identities (0,
+  // long secrets are replaced inside composite values too. Short identities (0,
   // a one-character offline name) are only replaced in their typed game fields.
   const replacements = Object.keys(PLACEHOLDERS).filter(key => credentials[key].length >= 8)
     .sort((a, b) => credentials[b].length - credentials[a].length);
@@ -125,7 +125,7 @@ function makeProvision({ command, account, instance, root, profile, settingsPath
   if (!instance || !validString(instance.id, 'instance ID', 512)) throw new Error('Missing instance ID');
   const credentials = credentialsFor(account, command.authorization);
   const split = splitJavaCommand(command.args);
-  // Secrets must never be passed as JVM flags/properties: only bootstrap input.
+  // secrets must never be passed as JVM flags/properties: only bootstrap input.
   const secrets = [credentials.accessToken, credentials.refreshToken].filter(value => value.length >= 4);
   if (split.jvmArgs.some(arg => secrets.some(secret => arg.includes(secret)))) throw new Error('A secret occurs in JVM arguments; remove it before preparing the shortcut');
   const inputs = [settingsPath, accountsPath, path.join(instance.path, 'instance.cfg'), path.join(instance.path, 'mmc-pack.json'), path.join(instance.path, 'instance.json')]
@@ -143,7 +143,7 @@ function makeProvision({ command, account, instance, root, profile, settingsPath
       largeText: `AeterMC ${appVersion || ''}`.trim().slice(0, 128) }
   };
   if (!plan.accountId) throw new Error('Missing account ID');
-  // The plan is sealed too, but still reject credential residue in fields that
+  // the plan is sealed too, but still reject credential residue in fields that
   // can become OS-visible arguments or diagnostic data.
   if (secrets.some(secret => JSON.stringify(plan).includes(secret))) throw new Error('Credentials could not be removed from the prepared plan');
   assertLocalPath(profile, 'native profile');

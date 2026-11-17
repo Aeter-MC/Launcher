@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; img-src 'self' https: data: file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+        content="default-src 'self'; connect-src 'self' https://aeter.waruk.xyz; img-src 'self' https: data: file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <title>AeterMC</title>
   <script src="theme-init.js"></script>
   <script src="../i18n/en.js"></script>
@@ -64,28 +64,36 @@
     <div class="titlebar-drag"></div>
     <div class="titlebar-controls">
       <button class="titlebar-btn titlebar-update hidden" id="btn-update"></button>
-      <button class="titlebar-btn" id="btn-minimize" title="Свернуть">
-        <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
-      </button>
-      <button class="titlebar-btn" id="btn-maximize" title="Развернуть">
-        <svg viewBox="0 0 12 12" id="icon-maximize"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
-      </button>
-      <button class="titlebar-btn titlebar-close" id="btn-close" title="Закрыть">
-        <svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7m0-7-7 7"/></svg>
-      </button>
+      <div class="window-controls-glass">
+        <button class="titlebar-btn" id="btn-minimize" aria-label="Свернуть">
+          <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
+        </button>
+        <button class="titlebar-btn" id="btn-maximize" aria-label="Развернуть">
+          <svg viewBox="0 0 12 12" id="icon-maximize"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
+        </button>
+        <button class="titlebar-btn titlebar-close" id="btn-close" aria-label="Закрыть">
+          <svg viewBox="0 0 12 12"><path d="M2.5 2.5l7 7m0-7-7 7"/></svg>
+        </button>
+      </div>
     </div>
   </header>
 
   <div class="app">
     <!-- Sidebar -->
     <aside class="sidebar">
-      <button class="brand" id="btn-sidebar-toggle" title="Свернуть меню">
+      <div class="brand">
         <span class="brand-logo">
           <svg class="logo"><use href="#i-logo"/></svg>
-          <svg class="ic brand-toggle"><use href="#i-sidebar"/></svg>
         </span>
         <span class="brand-name">AeterMC</span>
-      </button>
+        <button class="brand-toggle" id="btn-sidebar-toggle" data-sidebar-toggle title="Свернуть меню">
+          <svg class="ic"><use href="#i-sidebar"/></svg>
+        </button>
+        <button class="brand-collapsed-toggle" data-sidebar-toggle title="Развернуть меню">
+          <svg class="logo"><use href="#i-logo"/></svg>
+          <svg class="ic"><use href="#i-sidebar"/></svg>
+        </button>
+      </div>
       <nav class="nav">
         <button class="nav-item active" data-tab="home" title="Главная"><svg class="ic"><use href="#i-home"/></svg><span>Главная</span></button>
         <button class="nav-item" data-tab="instances" title="Сборки"><svg class="ic"><use href="#i-box"/></svg><span>Сборки</span></button>
@@ -112,65 +120,113 @@
     <main class="main">
       <!-- ============ HOME ============ -->
       <section class="page active page-home" id="page-home">
-        <h1 class="home-greeting" id="home-greeting">Привет</h1>
+        <h1 class="home-greeting" id="home-greeting" tabindex="-1">Привет</h1>
 
-        <div class="home-layout">
-          <div class="home-main">
-            <div class="hero" id="hero">
-              <svg class="hero-scene" viewBox="0 0 690 280" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-                <circle class="hero-sky-orb" cx="580" cy="66" r="22"/>
-                <path class="hero-far" d="M0 196h48v-16h56v-28h76v28h42v32h52v-12h60v-28h40v-48h74v24h56v28h60v-40h56v52h70v228H0z"/>
-                <path class="hero-near" d="M0 232h40v-12h70v-26h96v20h86v-20h64v28h74v-12h96v30h70v-22h94v262H0z"/>
-              </svg>
-              <div class="hero-body">
-                <div class="hero-tags" id="hero-tags"></div>
-                <div class="hero-row">
-                  <div class="hero-icon" id="hero-icon"></div>
-                  <div class="hero-text">
-                    <h2 class="hero-title" id="hero-title">—</h2>
-                    <div class="hero-meta" id="hero-meta"></div>
+        <section class="layout-editor hidden" id="home-layout-editor" aria-labelledby="layout-editor-heading">
+          <div class="page-head layout-editor-head">
+            <h1 id="layout-editor-heading">Редактор главной</h1>
+            <div class="layout-editor-actions">
+              <button class="btn btn-secondary" id="layout-reset">По умолчанию</button>
+              <button class="btn btn-secondary" id="layout-cancel">Отмена</button>
+              <button class="btn btn-primary" id="layout-save">Сохранить</button>
+            </div>
+          </div>
+          <p class="muted small">Перетаскивайте блоки ЛКМ. ПКМ открывает меню блока. Потяните за край колонки, чтобы изменить ширину.</p>
+          <div class="layout-tray hidden" id="layout-tray">
+            <h2 class="muted small">Скрытые блоки</h2>
+            <div class="layout-hidden-widgets" id="layout-hidden-widgets"></div>
+          </div>
+        </section>
+
+        <div class="home-layout home-no-left" id="home-layout">
+          <aside class="home-side home-left hidden" id="home-left-widgets" data-layout-column="left"></aside>
+          <div class="home-main" id="home-main-widgets" data-layout-column="main">
+            <section class="home-widget" data-home-widget="hero">
+              <div class="hero home-widget-body" id="hero">
+                <svg class="hero-scene" viewBox="0 0 690 280" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+                  <circle class="hero-sky-orb" cx="580" cy="66" r="22"/>
+                  <path class="hero-far" d="M0 196h48v-16h56v-28h76v28h42v32h52v-12h60v-28h40v-48h74v24h56v28h60v-40h56v52h70v228H0z"/>
+                  <path class="hero-near" d="M0 232h40v-12h70v-26h96v20h86v-20h64v28h74v-12h96v30h70v-22h94v262H0z"/>
+                </svg>
+                <div class="hero-body">
+                  <div class="hero-tags" id="hero-tags"></div>
+                  <div class="hero-row">
+                    <div class="hero-icon" id="hero-icon"></div>
+                    <div class="hero-text">
+                      <h2 class="hero-title" id="hero-title">—</h2>
+                      <div class="hero-meta" id="hero-meta"></div>
+                    </div>
+                    <button class="btn-play" id="btn-launch" disabled>
+                      <svg class="ic"><use id="btn-launch-icon" href="#i-play"/></svg>
+                      <span id="btn-launch-text">Играть</span>
+                    </button>
                   </div>
-                  <button class="btn-play" id="btn-launch" disabled>
-                    <svg class="ic"><use id="btn-launch-icon" href="#i-play"/></svg>
-                    <span id="btn-launch-text">Играть</span>
-                  </button>
-                </div>
-                <div class="progress" id="progress">
-                  <div class="progress-labels">
-                    <span id="progress-text">Подготовка…</span>
-                    <span id="progress-percent"></span>
+                  <div class="progress" id="progress">
+                    <div class="progress-labels">
+                      <span id="progress-text">Подготовка…</span>
+                      <span id="progress-percent"></span>
+                    </div>
+                    <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
                   </div>
-                  <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div class="section-head">
-              <h2>Недавние сборки</h2>
-              <button class="link-btn link-accent" data-goto="instances">Все сборки</button>
-            </div>
-            <div class="recent-grid" id="recent-instances"></div>
+            <section class="home-widget" data-home-widget="recent">
+              <div class="home-widget-body">
+                <div class="section-head">
+                  <h2>Недавние сборки</h2>
+                  <button class="link-btn link-accent" data-goto="instances">Все сборки</button>
+                </div>
+                <div class="recent-grid" id="recent-instances"></div>
+              </div>
+            </section>
           </div>
 
-          <aside class="home-side">
-            <div class="side-card">
-              <h3 class="side-title">Новости AeterMC</h3>
-              <div class="news-empty">
-                <svg class="ic ic-lg"><use href="#i-news"/></svg>
-                <span>Здесь будут новости лаунчера</span>
+          <aside class="home-side home-right" id="home-right-widgets" data-layout-column="right">
+            <section class="home-widget" data-home-widget="news">
+              <div class="side-card home-widget-body">
+                <div class="side-title-row news-heading">
+                  <h3 class="side-title"><svg class="ic"><use href="#i-news"/></svg>Новости AeterMC</h3>
+                </div>
+                <div class="news-empty" id="launcher-news">
+                  <span>Загрузка новостей…</span>
+                </div>
               </div>
-            </div>
-            <div class="side-card">
-              <div class="side-title-row">
-                <h3 class="side-title">Время за неделю</h3>
-                <b class="week-total" id="week-total">0 ч</b>
+            </section>
+            <section class="home-widget" data-home-widget="playtime">
+              <div class="side-card home-widget-body">
+                <div class="side-title-row">
+                  <h3 class="side-title">Время за неделю</h3>
+                  <b class="playtime-total" id="week-total">0 ч</b>
+                </div>
+                <div class="week-chart" id="week-chart"></div>
               </div>
-              <div class="week-chart" id="week-chart"></div>
-            </div>
-            <div class="side-card tip-card">
-              <svg class="ic"><use href="#i-bulb"/></svg>
-              <p id="home-tip"></p>
-            </div>
+            </section>
+            <section class="home-widget" data-home-widget="monthPlaytime">
+              <div class="side-card home-widget-body">
+                <div class="side-title-row">
+                  <h3 class="side-title">Время за месяц</h3>
+                  <b class="playtime-total" id="month-total">0 ч</b>
+                </div>
+                <table class="month-calendar">
+                  <caption id="month-period"></caption>
+                  <tbody id="month-days"></tbody>
+                </table>
+                <p class="month-day-detail" id="month-day-detail"></p>
+                <div class="month-legend" aria-hidden="true">
+                  <span>Меньше</span>
+                  <span class="month-cell"></span><span class="month-cell" data-level="1"></span><span class="month-cell" data-level="2"></span><span class="month-cell" data-level="3"></span><span class="month-cell" data-level="4"></span>
+                  <span>Больше</span>
+                </div>
+              </div>
+            </section>
+            <section class="home-widget" data-home-widget="tip">
+              <div class="side-card tip-card home-widget-body">
+                <svg class="ic"><use href="#i-bulb"/></svg>
+                <p id="home-tip"></p>
+              </div>
+            </section>
           </aside>
         </div>
       </section>
@@ -314,14 +370,23 @@
 
         <div class="settings">
           <h2 class="group-title">Оформление</h2>
-          <div class="group themes">
-            <div class="themes-row">
-              <div class="themes-label">Тёмные</div>
-              <div class="themes-grid" id="themes-dark"></div>
+          <div class="group">
+            <div class="themes">
+              <div class="themes-row">
+                <div class="themes-label">Тёмные</div>
+                <div class="themes-grid" id="themes-dark"></div>
+              </div>
+              <div class="themes-row">
+                <div class="themes-label">Светлые</div>
+                <div class="themes-grid" id="themes-light"></div>
+              </div>
             </div>
-            <div class="themes-row">
-              <div class="themes-label">Светлые</div>
-              <div class="themes-grid" id="themes-light"></div>
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Редактор главной</div>
+                <div class="setting-hint">Настройте блоки главной страницы и посмотрите, как они будут выглядеть</div>
+              </div>
+              <div class="setting-control"><button class="btn btn-secondary" id="btn-edit-home-layout">Настроить…</button></div>
             </div>
           </div>
 
@@ -382,6 +447,7 @@
                   <option value="auto">Автоматически</option>
                   <option value="g1">G1 — флаги Aikar</option>
                   <option value="zgc">ZGC — для 8+ ГБ</option>
+                  <option value="shenandoah">Shenandoah — низкие паузы</option>
                   <option value="none">Без флагов</option>
                 </select>
               </div>
@@ -403,6 +469,13 @@
                 <div class="setting-hint">Пока идёт игра, в профиле видно «Играет в AeterMC», название сборки и время</div>
               </div>
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-discord"><span></span></span></div>
+            </label>
+            <label class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Профилирование запуска</div>
+                <div class="setting-hint">Измерять этапы запуска и хранить последние 20 результатов для каждой сборки</div>
+              </div>
+              <div class="setting-control"><span class="switch"><input type="checkbox" id="check-launch-profiling"><span></span></span></div>
             </label>
             <div class="setting">
               <div class="setting-text"><div class="setting-label">Язык</div></div>
@@ -498,22 +571,30 @@
             </label>
           </div>
 
-          <h2 class="group-title">Prism Launcher</h2>
+          <h2 class="group-title">MultiMC (и его форки)</h2>
           <div class="group">
             <div class="setting">
               <div class="setting-text">
                 <div class="setting-label">Импорт сборок</div>
-                <div class="setting-hint">Копирует сборки сюда — дальше они живут отдельно от Prism</div>
+                <div class="setting-hint">Создаёт независимые копии сборок из Prism, Freesm, PolyMC и MultiMC</div>
               </div>
               <div class="setting-control"><button class="btn btn-secondary" id="btn-prism-import">Импортировать…</button></div>
             </div>
             <label class="setting">
               <div class="setting-text">
                 <div class="setting-label">Синхронизация</div>
-                <div class="setting-hint">Сборки Prism видны здесь и запускаются с теми же файлами, без копирования</div>
+                <div class="setting-hint">Показывает сборки из других лаунчеров и запускает их из исходных папок</div>
               </div>
               <div class="setting-control"><span class="switch"><input type="checkbox" id="check-prism"><span></span></span></div>
             </label>
+            <div class="setting">
+              <div class="setting-text">
+                <div class="setting-label">Дополнительные папки</div>
+                <div class="setting-hint">Добавьте папку совместимого лаунчера или папку с его сборками</div>
+              </div>
+              <div class="setting-control"><button class="btn btn-secondary" id="mmc-add-folder">Добавить папку…</button></div>
+            </div>
+            <div id="mmc-folders"></div>
           </div>
 
           <h2 class="group-title">Перенос настроек игры</h2>
@@ -600,7 +681,7 @@
 
         <!-- 5. prism -->
         <section class="setup-step" data-step="prism">
-          <h1>Сборки Prism Launcher</h1>
+          <h1>MultiMC (и его форки)</h1>
           <p id="setup-prism-text"></p>
           <div class="setup-options setup-options-col">
             <button class="setup-option" data-prism="copy">
@@ -609,7 +690,7 @@
             </button>
             <button class="setup-option" data-prism="sync">
               <svg class="ic"><use href="#i-link"/></svg>
-              <span><b>Синхронизировать</b><small>Оставить в Prism и запускать отсюда с теми же файлами</small></span>
+              <span><b>Синхронизировать</b><small>Запускать здесь из исходной папки, без копирования</small></span>
             </button>
             <button class="setup-option" data-prism="skip">
               <svg class="ic"><use href="#i-x"/></svg>
@@ -713,7 +794,7 @@
         </div>
         <div class="field-label spaced" id="icon-picker-blocks-label">Блоки</div>
         <div class="icon-picker-grid" id="icon-picker-grid"></div>
-        <p class="hint hidden" id="icon-picker-prism">Сборка из Prism Launcher: картинка сохранится и в Prism. Блоки AeterMC там недоступны.</p>
+        <p class="hint hidden" id="icon-picker-prism">Картинка сохранится и в исходном лаунчере.</p>
         <p class="hint">PNG или JPG, лучше квадратная — иначе обрежется по центру.</p>
       </div>
     </div>
@@ -812,6 +893,7 @@
                   <option value="auto">Автоматически</option>
                   <option value="g1">G1 — флаги Aikar</option>
                   <option value="zgc">ZGC — для 8+ ГБ</option>
+                  <option value="shenandoah">Shenandoah — низкие паузы</option>
                   <option value="none">Без флагов</option>
                 </select>
               </div>
@@ -850,7 +932,7 @@
             <div class="setting-control"><span class="switch"><input type="checkbox" id="launch-no-sync"><span></span></span></div>
           </label>
         </div>
-        <p class="hint hidden" id="launch-prism">Сборка из Prism Launcher: настройки сохранятся и в Prism.</p>
+        <p class="hint hidden" id="launch-prism">Настройки изменятся и в исходном лаунчере.</p>
       </div>
       <div class="modal-foot">
         <button class="btn btn-secondary" id="launch-reset">По умолчанию</button>
@@ -951,15 +1033,56 @@
     </div>
   </div>
 
+  <div class="modal hidden" id="modal-news" role="dialog" aria-modal="true" aria-labelledby="news-preview-title">
+    <div class="modal-box news-preview">
+      <div class="modal-head">
+        <span class="news-preview-label">Новости AeterMC</span>
+        <button class="icon-btn" id="news-preview-close" aria-label="Закрыть"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="modal-body" id="news-preview-body">
+        <time id="news-preview-date"></time>
+        <h3 id="news-preview-title"></h3>
+        <p id="news-preview-text"></p>
+        <section class="news-release hidden" id="news-release" aria-labelledby="news-release-heading">
+          <h4 id="news-release-heading"></h4>
+          <div class="release-empty" id="news-release-status" role="status"></div>
+          <div class="release-notes" id="news-release-notes"></div>
+          <button class="btn btn-secondary btn-sm hidden" id="news-release-retry">Повторить</button>
+        </section>
+        <a class="btn btn-secondary hidden" id="news-preview-link" target="_blank" rel="noopener noreferrer">Открыть в браузере</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal-layout-recent" role="dialog" aria-modal="true" aria-labelledby="layout-recent-title">
+    <form class="modal-box">
+      <div class="modal-head">
+        <h3 id="layout-recent-title">Сетка недавних сборок</h3>
+      </div>
+      <div class="modal-body">
+        <label class="field-label" for="layout-recent-rows">Строки</label>
+        <select class="select" id="layout-recent-rows"></select>
+        <label class="field-label" for="layout-recent-columns">Столбцы</label>
+        <select class="select" id="layout-recent-columns" aria-describedby="layout-recent-width-hint"></select>
+        <p class="hint" id="layout-recent-width-hint">Если карточка слишком узкая, столбцов будет меньше.</p>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-secondary" id="layout-recent-cancel">Отмена</button>
+        <button type="submit" class="btn btn-primary">Применить</button>
+      </div>
+    </form>
+  </div>
+
   <!-- ============ MODAL: PRISM IMPORT ============ -->
   <div class="modal hidden" id="modal-prism">
     <div class="modal-box">
       <div class="modal-head">
-        <h3>Импорт из Prism Launcher</h3>
+        <h3>Импорт сборок</h3>
         <button class="icon-btn" id="prism-close"><svg class="ic"><use href="#i-x"/></svg></button>
       </div>
       <div class="modal-body">
-        <p>Выбранные сборки будут скопированы вместе с модами, мирами и настройками. В Prism Launcher они останутся как были.</p>
+        <p>Выбранные сборки будут скопированы вместе с модами, мирами и настройками. Исходные сборки сохранятся.</p>
+        <button class="btn btn-secondary btn-sm" id="prism-add-folder">Добавить папку…</button>
         <div class="sync-checks prism-list" id="prism-list"></div>
         <div class="prism-progress hidden" id="prism-progress">
           <div class="progress-labels"><span id="prism-progress-text"></span><span id="prism-progress-percent"></span></div>
@@ -1214,6 +1337,9 @@
   <script src="shot-editor.js"></script>
   <script src="select-menu.js"></script>
   <script src="gamepad.js"></script>
+  <script src="home-layout.js"></script>
+  <script src="home-editor.js"></script>
+  <script src="news.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

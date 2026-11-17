@@ -1,4 +1,4 @@
-// V2 is deliberately separate from the legacy runner. No Electron/Node runtime.
+// v2 is deliberately separate from the legacy runner. No Electron/Node runtime.
 #include "security.hpp"
 #include "auth.hpp"
 #include "discord.hpp"
@@ -52,6 +52,16 @@ void validateCredentials(const Json& credentials) {
     for (const auto* key : {"username", "uuid", "xuid", "clientId", "accessToken", "refreshToken"}) stringField(credentials,key, 256 * 1024);
     if (!credentials.contains("expiresAt") || !credentials["expiresAt"].is_number_integer()) fail("Invalid credential expiry.");
 }
+void normalizeOfflineCredentials(Json& credentials) {
+    if (stringField(credentials,"type",32) != "offline") return;
+    const auto uuid = offlineUuid(stringField(credentials,"username",256 * 1024));
+    credentials["uuid"] = uuid;
+    credentials["accessToken"] = uuid;
+    credentials["clientId"] = uuid;
+    credentials["xuid"] = "0";
+    credentials["refreshToken"] = "";
+    credentials["expiresAt"] = 0;
+}
 std::string inputJson() {
     HANDLE in = GetStdHandle(STD_INPUT_HANDLE); if (!in || in == INVALID_HANDLE_VALUE || GetFileType(in) != FILE_TYPE_PIPE) fail("Provisioning requires an anonymous input pipe.");
     std::string bytes; char block[8192]; DWORD n = 0;
@@ -62,8 +72,8 @@ void provision(const fs::path& nativeDir, const std::string& id) {
     auto input = inputJson(); Json payload;
     try { payload = Json::parse(input); } catch (...) { SecureZeroMemory(input.data(),input.size()); fail("Invalid provisioning configuration."); }
     SecureZeroMemory(input.data(),input.size()); Wipe guard{payload};
-    auto& plan = payload.at("plan"); auto& credentials = payload.at("credentials"); validatePlan(plan,id,true); validateCredentials(credentials);
-    // Reject leaked credentials in JVM arguments even if an exporter is faulty.
+    auto& plan = payload.at("plan"); auto& credentials = payload.at("credentials"); validatePlan(plan,id,true); validateCredentials(credentials); normalizeOfflineCredentials(credentials);
+    // reject leaked credentials in JVM arguments even if an exporter is faulty.
     auto jvm = plan.at("jvmArgs").dump();
     for (const auto* key : {"accessToken","refreshToken"}) { auto secret = credentials[key].get<std::string>(); if (secret.size() > 3 && jvm.find(secret) != std::string::npos) fail("Refusing to put credentials in the Java command line."); }
     auto account = hash(stringField(plan,"accountId")); Mutex auth(mutexName(utf8((nativeDir / L"accounts" / (account + ".bin")).native()) + "-auth"), 5000);
@@ -117,12 +127,12 @@ int runGame(const fs::path& nativeDir,const std::string& id) {
     Mutex instanceLock(mutexName(utf8(nativeDir.native())+"-instance-"+id));
     auto plan=unseal(nativeDir/L"plans"/(hash(id)+".bin")); Wipe planGuard{plan}; validatePlan(plan,id,true);
     auto cwd=absolutePath(stringField(plan,"cwd")); auto cwdPin=pinPath(cwd,true);
-    // Share the old launch lock as well, avoiding two writers to one game directory.
+    // share the old launch lock as well, avoiding two writers to one game directory.
     auto lockPath=cwd/L".aetermc-launch.lock"; Security security;
     Handle gameLock(CreateFileW(lockPath.c_str(),GENERIC_READ|GENERIC_WRITE|DELETE,FILE_SHARE_READ,&security.sa,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_DELETE_ON_CLOSE,nullptr));
     if(!gameLock) fail("This instance is already running or has a stale Aeter lock. Open Aeter to recover it.");
     auto lockData=Json{{"pid",GetCurrentProcessId()},{"token","native-v2"}}.dump(); DWORD n=0; if(!WriteFile(gameLock.h,lockData.data(),static_cast<DWORD>(lockData.size()),&n,nullptr)) fail("Cannot write game session lock.");
-    auto credentials=launchCredentials(nativeDir/L"accounts"/(hash(stringField(plan,"accountId"))+".bin"),nativeDir); Wipe credentialGuard{credentials}; validateCredentials(credentials);
+    auto credentials=launchCredentials(nativeDir/L"accounts"/(hash(stringField(plan,"accountId"))+".bin"),nativeDir); Wipe credentialGuard{credentials}; validateCredentials(credentials); normalizeOfflineCredentials(credentials);
     std::vector<std::string> gameArgs; for(auto& s:strings(plan["gameArgs"])) gameArgs.push_back(substitute(s,credentials));
     auto packet=bootstrapPacket(stringField(plan,"mainClass"),gameArgs);
     auto jvmArgs=strings(plan["jvmArgs"]);
@@ -132,7 +142,7 @@ int runGame(const fs::path& nativeDir,const std::string& id) {
     for(auto& arg:gameArgs) SecureZeroMemory(arg.data(),arg.size()); wipe(credentials);
     DiscordRpc rpc(plan.at("rpc"),started/1000);
     auto session=nativeDir/L"sessions"/(hash(id)+"-"+std::to_string(GetCurrentProcessId())+"-"+std::to_string(started)+".json");
-    // Logs contain bounded event data only; never raw argv, errors, tokens or child output.
+    // logs contain bounded event data only; never raw argv, errors, tokens or child output.
     writeFile(session,Json{{"schema",2},{"event","java-started"},{"runnerPid",GetCurrentProcessId()},{"javaPid",GetProcessId(child.process.h)},{"start",started}}.dump());
     while(WaitForSingleObject(child.process.h,100)!=WAIT_OBJECT_0) rpc.tick();
     DWORD code=1; if(!GetExitCodeProcess(child.process.h,&code)) fail("Cannot read Java exit status.");

@@ -1,13 +1,13 @@
 /**
  * build.js — `npm run build`
- * Builds two files into dist/:
+ * builds two files into dist/:
  *   AeterMC-Setup-<version>.exe     — the installer in the launcher's style
  *   AeterMC-<version>-portable.exe  — the launcher without installation
- * Both are electron-builder "portable" packages of the same app; the setup one carries
+ * both are electron-builder "portable" packages of the same app; the setup one carries
  * `aeterSetup: true` in its package.json, which makes main.js open the installer window.
  * `npm run build -- --setup-only` skips the portable one.
  *
- * The setup stub uses installer/splash/portable-setup.nsi instead of electron-builder's
+ * the setup stub uses installer/splash/portable-setup.nsi instead of electron-builder's
  * portable.nsi, so it can show the animated splash (installer/build/splash.exe, `npm run splash`)
  * while it unpacks. electron-builder has no option for a custom portable template, so its
  * template read is redirected for the duration of that build.

@@ -1,8 +1,8 @@
 /**
  * modrinth-manager.js
- * Modrinth API integration: search, install into a build, recognise installed mods by file hash
+ * modrinth API integration: search, install into a build, recognise installed mods by file hash
  * and look for updates that match the build's Minecraft version and loader.
- * The same works for resource packs and shaders: `kind` is one of content-types.js ('mod' by default).
+ * the same works for resource packs and shaders: `kind` is one of content-types.js ('mod' by default).
  */
 const fs = require('fs');
 const path = require('path');
@@ -18,7 +18,7 @@ const SCAN_CACHE_MS = 10 * 60 * 1000;
 const PROJECT_INFO_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Loaders a version has to list to fit the build. Resource packs all say "minecraft", so any fits;
+ * loaders a version has to list to fit the build. Resource packs all say "minecraft", so any fits;
  * shaders run on Iris (Oculus on Forge) or OptiFine, and most packs list both.
  */
 function loaderList(loader, kind = 'mod') {
@@ -28,7 +28,7 @@ function loaderList(loader, kind = 'mod') {
   return loader === 'quilt' ? ['quilt', 'fabric'] : [loader.toLowerCase()];
 }
 
-/** A version fits the build only if it lists the exact Minecraft version and a matching loader. */
+/** a version fits the build only if it lists the exact Minecraft version and a matching loader. */
 function isCompatible(version, gameVersion, loader, kind = 'mod') {
   if (!version) return false;
   const loaders = loaderList(loader, kind);
@@ -95,7 +95,7 @@ class ModrinthManager {
       headers: HEADERS,
       timeout: 10000
     });
-    // The API filter is loose about loaders on multi-loader versions, so check again
+    // the API filter is loose about loaders on multi-loader versions, so check again
     return (response.data || []).filter(v => isCompatible(v, gameVersion, loader, kind));
   }
 
@@ -141,7 +141,7 @@ class ModrinthManager {
     return sha1;
   }
 
-  /** Files of this kind in the folder; unpacked resource packs and shaders come as folders without a hash. */
+  /** files of this kind in the folder; unpacked resource packs and shaders come as folders without a hash. */
   listModFiles(modsDir, kind = 'mod') {
     if (!fs.existsSync(modsDir)) return [];
     const type = contentType(kind);
@@ -185,7 +185,7 @@ class ModrinthManager {
     return res.data || {};
   }
 
-  /** Title/slug/icon/server side of projects; they rarely change, so they are kept for a week. */
+  /** title/slug/icon/server side of projects; they rarely change, so they are kept for a week. */
   async getProjects(ids) {
     const unique = [...new Set(ids)];
     const result = {};
@@ -213,7 +213,7 @@ class ModrinthManager {
   }
 
   /**
-   * Local mods of a build, enriched with Modrinth data:
+   * local mods of a build, enriched with Modrinth data:
    * which project each file belongs to, whether the installed version fits the build,
    * and the newest version for exactly this Minecraft version + loader.
    */
@@ -246,7 +246,7 @@ class ModrinthManager {
       let update = null;
       if (cur && next && next.id !== cur.id && isCompatible(next, gameVersion, loader, kind)) {
         const newer = new Date(next.date_published) > new Date(cur.date_published);
-        // Offer it when it is newer, or when the installed file is not even made for this Minecraft version
+        // offer it when it is newer, or when the installed file is not even made for this Minecraft version
         if (newer || !curCompatible) {
           update = { versionId: next.id, versionNumber: next.version_number, published: next.date_published };
         }
@@ -275,7 +275,7 @@ class ModrinthManager {
 
   // ---------- downloads ----------
 
-  /** Downloads the primary file of a version, checks its sha1 and moves it into place. */
+  /** downloads the primary file of a version, checks its sha1 and moves it into place. */
   async downloadVersion(version, modsDir, { disabled = false } = {}) {
     const file = primaryFile(version);
     if (!file || !file.url) throw new Error(t('У этой версии мода нет файла для скачивания'));
@@ -296,7 +296,7 @@ class ModrinthManager {
     return finalName;
   }
 
-  /** Files in the folder that belong to the given Modrinth projects: { projectId: [{ fileName, versionId, enabled }] } */
+  /** files in the folder that belong to the given Modrinth projects: { projectId: [{ fileName, versionId, enabled }] } */
   async installedProjects(modsDir, kind = 'mod') {
     const files = this.listModFiles(modsDir, kind).filter(f => f.sha1);
     const current = await this.identify(files.map(f => f.sha1));
@@ -310,7 +310,7 @@ class ModrinthManager {
   }
 
   /**
-   * Installs the newest version of a project that fits the build, replacing an older copy
+   * installs the newest version of a project that fits the build, replacing an older copy
    * and, for mods, pulling in required dependencies that are missing.
    */
   async installMod(projectId, gameVersion, loader, modsDir, kind = 'mod', _state = null) {
@@ -337,7 +337,7 @@ class ModrinthManager {
       state.added.push(newName);
     }
 
-    // Required dependencies (Fabric API, libraries, ...); a shader's "dependency" is a mod like Iris, not another shader
+    // required dependencies (Fabric API, libraries, ...); a shader's "dependency" is a mod like Iris, not another shader
     if (kind === 'mod' && state.depth < 3) {
       for (const dep of version.dependencies || []) {
         if (dep.dependency_type !== 'required' || !dep.project_id || state.installed[dep.project_id]) continue;
@@ -355,7 +355,7 @@ class ModrinthManager {
     return { fileName: state.added[0] || null, added: state.added, versionNumber: version.version_number };
   }
 
-  /** Updates one installed file to the newest version for this Minecraft version + loader. */
+  /** updates one installed file to the newest version for this Minecraft version + loader. */
   async updateMod(modsDir, fileName, gameVersion, loader, kind = 'mod') {
     const fullPath = path.join(modsDir, fileName);
     if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) throw new Error(t('Файл мода не найден'));

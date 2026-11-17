@@ -55,6 +55,19 @@ inline std::string hash(const std::string& bytes) {
     if (!ok) fail("SHA-256 failed.");
     std::string out; for (unsigned char c : digest) { out += "0123456789abcdef"[c >> 4]; out += "0123456789abcdef"[c & 15]; } return out;
 }
+inline std::string offlineUuid(const std::string& username) {
+    const auto value = std::string("OfflinePlayer:") + username;
+    BCRYPT_ALG_HANDLE alg{}; BCRYPT_HASH_HANDLE state{}; unsigned char digest[16]{};
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_MD5_ALGORITHM, nullptr, 0) < 0) fail("MD5 is unavailable.");
+    bool ok = BCryptCreateHash(alg, &state, nullptr, 0, nullptr, 0, 0) >= 0;
+    if (ok) ok = BCryptHashData(state, reinterpret_cast<PUCHAR>(const_cast<char*>(value.data())), static_cast<ULONG>(value.size()), 0) >= 0;
+    if (ok) ok = BCryptFinishHash(state, digest, sizeof(digest), 0) >= 0;
+    if (state) BCryptDestroyHash(state); BCryptCloseAlgorithmProvider(alg, 0);
+    if (!ok) fail("Offline UUID generation failed.");
+    digest[6] = static_cast<unsigned char>((digest[6] & 0x0f) | 0x30);
+    digest[8] = static_cast<unsigned char>((digest[8] & 0x3f) | 0x80);
+    std::string out; for (unsigned char c : digest) { out += "0123456789abcdef"[c >> 4]; out += "0123456789abcdef"[c & 15]; } return out;
+}
 inline std::wstring userSid() {
     Handle token; if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token.h)) fail("Cannot read current user identity.");
     DWORD size = 0; GetTokenInformation(token.h, TokenUser, nullptr, 0, &size); std::vector<char> bytes(size);
@@ -76,7 +89,7 @@ inline fs::path absolutePath(const std::string& text) {
     for (const auto& part : p) if (part == L".." || part == L"." || (!part.empty() && (part.native().back() == L' ' || part.native().back() == L'.'))) fail("Invalid path component.");
     return p.lexically_normal();
 }
-// Holding directory handles without FILE_SHARE_DELETE prevents ancestor swaps.
+// holding directory handles without FILE_SHARE_DELETE prevents ancestor swaps.
 inline std::vector<Handle> pinPath(const fs::path& path, bool includeLeaf = false) {
     std::vector<Handle> held; fs::path current = path.root_path();
     auto tail = path.relative_path(); size_t index = 0, count = static_cast<size_t>(std::distance(tail.begin(), tail.end()));

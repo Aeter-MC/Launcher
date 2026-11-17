@@ -1,10 +1,10 @@
 /**
  * crash-analyzer.js
- * After the game exits with an error: what most likely happened, in plain words, and what to do.
- * Looks at the newest crash report written during the session (crash-reports/), a JVM fatal error
+ * after the game exits with an error: what most likely happened, in plain words, and what to do.
+ * looks at the newest crash report written during the session (crash-reports/), a JVM fatal error
  * log (hs_err_pid*.log) and the game's own output, and returns
  *   { title, text, culprits: [{ id, name, file }], actions: [{ type, … }], details, reportFile }.
- * The mods of the build (mod-meta.js) turn mod ids from stack traces into names and jar files.
+ * the mods of the build (mod-meta.js) turn mod ids from stack traces into names and jar files.
  */
 const fs = require('fs');
 const path = require('path');
@@ -49,7 +49,7 @@ function modIndex(jars) {
   return index;
 }
 
-/** Mod ids named by a crash: Fabric's "Suspected Mods" line and mixin handler names in the stack trace. */
+/** mod ids named by a crash: Fabric's "Suspected Mods" line and mixin handler names in the stack trace. */
 function suspects(text, index) {
   const ids = [];
   const push = (id) => { if (id && !NOT_CULPRITS.has(id) && !ids.includes(id)) ids.push(id); };

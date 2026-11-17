@@ -1,6 +1,6 @@
 /**
  * version-manager.js
- * Handles fetching Mojang versions, reading local installed versions, and Fabric installation.
+ * handles fetching Mojang versions, reading local installed versions, and Fabric installation.
  */
 const fs = require('fs');
 const path = require('path');
@@ -26,10 +26,10 @@ class VersionManager {
   }
 
   /**
-   * Fetches the official Mojang version manifest.
+   * fetches the official Mojang version manifest.
    */
   /**
-   * The official Mojang version list. A copy on disk is used right away and refreshed
+   * the official Mojang version list. A copy on disk is used right away and refreshed
    * in the background when it is older than 6 hours, so startup never waits for the network
    * once the list has been downloaded at least once.
    */
@@ -67,7 +67,7 @@ class VersionManager {
   }
 
   /**
-   * Scans the local .minecraft/versions directory.
+   * scans the local .minecraft/versions directory.
    */
   getInstalledVersions() {
     const versionsDir = path.join(this.gameDir, 'versions');
@@ -112,7 +112,7 @@ class VersionManager {
   }
 
   /**
-   * Combines Mojang manifest with installed local versions.
+   * combines Mojang manifest with installed local versions.
    */
   async getAllVersions(showSnapshots = false) {
     const installed = this.getInstalledVersions();
@@ -145,7 +145,7 @@ class VersionManager {
       console.warn('[VersionManager] Using installed versions as fallback:', e.message);
     }
 
-    // Include installed versions that are not in Mojang manifest (e.g. Fabric, Forge, Modpacks)
+    // include installed versions that are not in Mojang manifest (e.g. Fabric, Forge, Modpacks)
     const combined = [...installed.filter(iv => !mojangVersions.some(mv => mv.id === iv.id))];
     combined.push(...mojangVersions);
 
@@ -158,13 +158,13 @@ class VersionManager {
   }
 
   /**
-   * Fetches Fabric loader versions available for a game version.
+   * fetches Fabric loader versions available for a game version.
    */
   async getFabricLoaders(gameVersion) {
     try {
       const url = `https://meta.fabricmc.net/v2/versions/loader/${gameVersion}`;
       const res = await axios.get(url, { timeout: 8000 });
-      return res.data; // Array of { loader: { version, stable }, ... }
+      return res.data; // array of { loader: { version, stable }, ... }
     } catch (e) {
       console.error('[VersionManager] Failed to fetch Fabric loaders:', e.message);
       return [];
@@ -172,7 +172,7 @@ class VersionManager {
   }
 
   /**
-   * Installs Fabric loader for specified Minecraft version.
+   * installs Fabric loader for specified Minecraft version.
    */
   async installFabric(gameVersion, loaderVersion) {
     if (!loaderVersion) {
@@ -215,8 +215,8 @@ class VersionManager {
   }
 
   /**
-   * Turns a version id from the UI into MCLC launch parameters.
-   * Custom versions (Fabric, Forge, ...) inherit from a vanilla version.
+   * turns a version id from the UI into MCLC launch parameters.
+   * custom versions (Fabric, Forge, ...) inherit from a vanilla version.
    */
   resolveLaunchVersion(versionId) {
     const meta = this.readLocalVersionJson(versionId);
@@ -227,7 +227,7 @@ class VersionManager {
   }
 
   /**
-   * Returns the Java major version a Minecraft version needs.
+   * returns the Java major version a Minecraft version needs.
    */
   async getRequiredJava(versionId) {
     let id = versionId;
@@ -251,7 +251,7 @@ class VersionManager {
       } catch (e) {}
     }
 
-    // Fallback heuristic for "1.X.Y" ids
+    // fallback heuristic for "1.X.Y" ids
     const m = /^1\.(\d+)(?:\.(\d+))?/.exec(id || versionId || '');
     if (m) {
       const minor = parseInt(m[1], 10);
@@ -265,7 +265,7 @@ class VersionManager {
   }
 
   /**
-   * Deletes a version directory from .minecraft/versions.
+   * deletes a version directory from .minecraft/versions.
    */
   deleteVersion(versionId) {
     const targetDir = path.join(this.gameDir, 'versions', versionId);

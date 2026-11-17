@@ -45,7 +45,7 @@ function acquireLaunchLock(gameDir) {
         if (!Number.isInteger(lock.pid) || lock.pid <= 0) throw new Error('Invalid launch lock');
         try { process.kill(lock.pid, 0); } catch (e) { if (e.code === 'ESRCH') live = false; }
       } catch (_) {
-        // A concurrent writer may not have finished; do not remove a fresh lock.
+        // a concurrent writer may not have finished; do not remove a fresh lock.
         live = Date.now() - fs.statSync(file).mtimeMs < 60000;
       }
       if (live) throw new Error('This instance is already running or being prepared');

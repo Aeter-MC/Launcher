@@ -1,11 +1,11 @@
 /**
  * check-i18n.js — `npm run i18n`
- * Collects the Russian texts the launcher translates (src/i18n/i18n.js) and checks them against
+ * collects the Russian texts the launcher translates (src/i18n/i18n.js) and checks them against
  * the English dictionary src/i18n/en.js:
  *   - t('…') / i18n.t('…'), pluralize(n, ['…', '…', '…']) and literals on lines marked // i18n-key;
  *   - text and title / placeholder / aria-label of the pages' markup (not inside translate="no");
  *   - the theme names (src/themes.json).
- * Reports texts missing from the dictionary, {placeholders} that differ, dictionary entries nothing
+ * reports texts missing from the dictionary, {placeholders} that differ, dictionary entries nothing
  * uses and Russian literals in the code that aren't passed through t() (// i18n-ignore keeps one).
  * `--skeleton` prints the missing texts as dictionary lines. Exits with 1 when something is missing.
  */
@@ -59,7 +59,7 @@ for (const file of jsFiles(SRC)) {
   });
 }
 
-// Markup: text nodes and attributes, skipping <script>, <style> and translate="no" elements
+// markup: text nodes and attributes, skipping <script>, <style> and translate="no" elements
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']);
 for (const name of fs.readdirSync(path.join(SRC, 'renderer')).filter(n => n.endsWith('.html'))) {
   const html = fs.readFileSync(path.join(SRC, 'renderer', name), 'utf8');

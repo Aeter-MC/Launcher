@@ -1,6 +1,6 @@
 /**
  * discord-rpc.js
- * Discord Rich Presence over Discord's local IPC pipe, without a library:
+ * discord Rich Presence over Discord's local IPC pipe, without a library:
  * a frame is opcode (int32 LE) + length (int32 LE) + JSON. The connection is opened when the
  * game starts and closed when it ends, so a launcher in the background talks to Discord only
  * while someone plays. When Discord is not running every call quietly does nothing.
@@ -8,7 +8,7 @@
 const net = require('net');
 const path = require('path');
 
-// Discord application "AeterMC" (discord.com/developers/applications): its name is the "Играет в …" title
+// discord application "AeterMC" (discord.com/developers/applications): its name is the "Играет в …" title
 const CLIENT_ID = process.env.AETERMC_DISCORD_ID || '1567886541823545375';
 
 // a URL works as an image key: Discord shows it through its media proxy
@@ -34,7 +34,7 @@ function encode(op, data) {
   return Buffer.concat([head, json]);
 }
 
-/** Connects to the first pipe Discord answers on (it uses 0..9 when several clients run). */
+/** connects to the first pipe Discord answers on (it uses 0..9 when several clients run). */
 function connectPipe(n = 0) {
   return new Promise((resolve, reject) => {
     if (n > 9) return reject(new Error('Discord is not running'));
@@ -65,7 +65,7 @@ class DiscordPresence {
     return !!this.clientId;
   }
 
-  /** Opens the pipe and does the handshake; resolves once Discord sends READY. */
+  /** opens the pipe and does the handshake; resolves once Discord sends READY. */
   connect() {
     if (!this.available) return Promise.reject(new Error('No Discord application id'));
     if (this.ready) return this.ready;
@@ -93,7 +93,7 @@ class DiscordPresence {
   }
 
   read(chunk) {
-    // A local pipe is not a trusted source. Bound both a frame and buffered data
+    // a local pipe is not a trusted source. Bound both a frame and buffered data
     // before concatenating; reject signed/oversized lengths before slicing.
     if (chunk.length > 1024 * 1024 || this.buffer.length + chunk.length > 1024 * 1024) {
       this.reset(new Error('Discord IPC frame exceeds the size limit'));
@@ -148,7 +148,7 @@ class DiscordPresence {
   }
 
   /**
-   * Shows "Играет в AeterMC": details / state are the two lines under the title,
+   * shows "Играет в AeterMC": details / state are the two lines under the title,
    * start is the session start (ms) Discord counts the time from.
    */
   async setActivity({ details, state, start, largeText }) {
@@ -169,7 +169,7 @@ class DiscordPresence {
     return true;
   }
 
-  /** Clears the status and closes the pipe. */
+  /** clears the status and closes the pipe. */
   clear() {
     if (!this.socket) return;
     this.send('SET_ACTIVITY', { pid: process.pid });

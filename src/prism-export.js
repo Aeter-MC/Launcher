@@ -1,6 +1,6 @@
 /**
  * prism-export.js
- * A build as a Prism Launcher instance archive (.zip), the same layout Prism's own "Export instance"
+ * a build as a Prism Launcher instance archive (.zip), the same layout Prism's own "Export instance"
  * writes and its "Import" takes:
  *   instance.cfg      name, icon and the build's own launch settings (Override* keys)
  *   mmc-pack.json     components: Minecraft and the loader; Prism adds LWJGL and the rest itself
@@ -13,7 +13,7 @@ const AdmZip = require('adm-zip');
 const { t } = require('./i18n/i18n');
 const { collectFiles, writePrismLaunch, mmcPack } = require('./instances-manager');
 
-/** Icon of the build as PNG bytes, or null (block icons are AeterMC's own and have no file). */
+/** icon of the build as PNG bytes, or null (block icons are AeterMC's own and have no file). */
 function iconPng(inst) {
   const m = /^data:image\/png;base64,(.+)$/.exec(inst.iconImage || '');
   return m ? Buffer.from(m[1], 'base64') : null;
@@ -28,8 +28,8 @@ function instanceCfg(inst, iconKey) {
 }
 
 /**
- * Writes the archive. include: top-level names of the game folder (see MrpackManager.listExportEntries).
- * Returns { file, packed }.
+ * writes the archive. include: top-level names of the game folder (see MrpackManager.listExportEntries).
+ * returns { file, packed }.
  */
 async function exportPrism(inst, { include = [], allowed, file }, onProgress = () => {}) {
   if (inst.loader !== 'vanilla' && !inst.loaderVersion) throw new Error(t('У сборки не указана версия загрузчика'));

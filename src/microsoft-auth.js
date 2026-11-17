@@ -1,14 +1,14 @@
 /**
  * microsoft-auth.js
- * Microsoft account login via the device code flow (like Prism Launcher):
+ * microsoft account login via the device code flow (like Prism Launcher):
  * the user opens microsoft.com/link (or scans a QR code), enters a short code,
  * and the launcher polls until the sign-in completes.
- * Then: Microsoft token -> Xbox Live -> XSTS -> Minecraft token -> profile.
+ * then: Microsoft token -> Xbox Live -> XSTS -> Minecraft token -> profile.
  */
 const { authRequest } = require('./auth-http');
 const { t } = require('./i18n/i18n');
 
-// Same public client id the official launcher (and msmc) uses, so older refresh tokens keep working
+// same public client id the official launcher (and msmc) uses, so older refresh tokens keep working
 const CLIENT_ID = '00000000402b5328';
 const SCOPE = 'service::user.auth.xboxlive.com::MBI_SSL';
 const DEVICE_CODE_URL = 'https://login.live.com/oauth20_connect.srf';
@@ -42,7 +42,7 @@ class MicrosoftAuth {
     this.pending = null;
   }
 
-  /** Requests a device code. Returns { userCode, verificationUri, linkUrl, expiresIn, interval, deviceCode }. */
+  /** requests a device code. Returns { userCode, verificationUri, linkUrl, expiresIn, interval, deviceCode }. */
   async requestDeviceCode() {
     const res = await axios.post(DEVICE_CODE_URL, form({
       client_id: CLIENT_ID,
@@ -60,7 +60,7 @@ class MicrosoftAuth {
     };
   }
 
-  /** Polls the token endpoint until the user finishes signing in. */
+  /** polls the token endpoint until the user finishes signing in. */
   async pollForToken(code) {
     const session = { cancelled: false };
     this.pending = session;
@@ -114,9 +114,9 @@ class MicrosoftAuth {
     return res.data;
   }
 
-  /** Microsoft token -> Minecraft access token + profile. */
+  /** microsoft token -> Minecraft access token + profile. */
   async loginToMinecraft(msToken) {
-    // Live tokens are accepted with "d=" by most accounts, some only with "t=": try both
+    // live tokens are accepted with "d=" by most accounts, some only with "t=": try both
     let xbl;
     for (const prefix of ['d=', 't=']) {
       try {
@@ -172,7 +172,7 @@ class MicrosoftAuth {
   }
 }
 
-/** The Minecraft access token is a JWT whose payload carries the player's Xbox user id. Returns '' if it can't be read. */
+/** the Minecraft access token is a JWT whose payload carries the player's Xbox user id. Returns '' if it can't be read. */
 function xuidFromToken(accessToken) {
   try {
     const payload = JSON.parse(Buffer.from(String(accessToken).split('.')[1], 'base64url').toString('utf-8'));
@@ -182,7 +182,7 @@ function xuidFromToken(accessToken) {
   }
 }
 
-/** Auth object in the format minecraft-launcher-core expects. */
+/** auth object in the format minecraft-launcher-core expects. */
 function toMclcAuth(result) {
   return {
     access_token: result.accessToken,

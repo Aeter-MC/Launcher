@@ -1,5 +1,5 @@
 /**
- * Imports a Prism/MultiMC instance ZIP as an independent AeterMC build.
+ * imports a Prism/MultiMC instance ZIP as an independent AeterMC build.
  */
 const fs = require('fs');
 const path = require('path');
@@ -42,7 +42,7 @@ function readInstanceZip(file) {
   const iconKey = cfgValue(cfg, 'iconKey');
   const icon = iconKey && /^[\w-]+$/.test(iconKey) ? zip.getEntry(prefix + iconKey + '.png') : null;
   const launch = prismLaunch(cfg);
-  // Java executables and JVM arguments are machine-local and can execute arbitrary code.
+  // java executables and JVM arguments are machine-local and can execute arbitrary code.
   delete launch.javaPath;
   delete launch.customJvmArgs;
   return {

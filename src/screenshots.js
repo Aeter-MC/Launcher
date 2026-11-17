@@ -1,6 +1,6 @@
 /**
  * screenshots.js
- * Screenshots from the shared .minecraft and from every build, for the "Скриншоты" page.
+ * screenshots from the shared .minecraft and from every build, for the "Скриншоты" page.
  */
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +10,7 @@ const { t } = require('./i18n/i18n');
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 
 /**
- * Folders that may hold screenshots: [{ dir, instanceId, instanceName }].
+ * folders that may hold screenshots: [{ dir, instanceId, instanceName }].
  * `root` is the shared .minecraft, `instances` comes from InstancesManager.listInstances().
  */
 function screenshotSources(root, instances) {
@@ -27,7 +27,7 @@ function screenshotSources(root, instances) {
   return sources;
 }
 
-/** All screenshots, newest first. */
+/** all screenshots, newest first. */
 async function listScreenshots(sources) {
   const result = [];
   await Promise.all(sources.map(async (src) => {
@@ -58,7 +58,7 @@ async function listScreenshots(sources) {
   return result;
 }
 
-/** True when `file` is an image directly inside one of the screenshot folders (guards the IPC calls). */
+/** true when `file` is an image directly inside one of the screenshot folders (guards the IPC calls). */
 function isScreenshotPath(file, sources) {
   if (typeof file !== 'string' || !IMAGE_EXT.test(file)) return false;
   const dir = path.dirname(path.resolve(file)).toLowerCase();
@@ -66,9 +66,9 @@ function isScreenshotPath(file, sources) {
 }
 
 /**
- * Calls `onChange` (debounced) when screenshots appear, change or disappear in any source folder.
- * A folder that does not exist yet is caught through its parent, when the game creates it.
- * Returns a function that stops watching.
+ * calls `onChange` (debounced) when screenshots appear, change or disappear in any source folder.
+ * a folder that does not exist yet is caught through its parent, when the game creates it.
+ * returns a function that stops watching.
  */
 function watchScreenshots(sources, onChange) {
   let timer = null;

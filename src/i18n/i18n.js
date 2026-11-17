@@ -1,9 +1,9 @@
 /**
  * i18n.js
- * The launcher is written in Russian; another language is a dictionary keyed by the Russian text
+ * the launcher is written in Russian; another language is a dictionary keyed by the Russian text
  * (en.js). t('Доступна версия {version}', { version }) looks the text up and fills in the {names};
  * a text missing from the dictionary stays Russian (`npm run i18n` lists them).
- * The main process requires this file; the pages load it with <script> before their own scripts
+ * the main process requires this file; the pages load it with <script> before their own scripts
  * and get the language from the URL (?lang=en), like the theme. Changing the language reloads them.
  */
 (function (root, factory) {
@@ -22,7 +22,7 @@
     if (typeof document !== 'undefined') document.documentElement.lang = language;
   }
 
-  /** The language for a new launcher: Russian for the CIS languages of the system, English otherwise. */
+  /** the language for a new launcher: Russian for the CIS languages of the system, English otherwise. */
   function detectLanguage(systemLanguages) {
     const first = String((systemLanguages || [])[0] || '').toLowerCase();
     return /^(ru|be|kk|ky|uz|tg)\b/.test(first) || !first ? 'ru' : 'en';
@@ -50,7 +50,7 @@
   }
 
   /**
-   * Translates the Russian text nodes and title / placeholder / aria-label attributes of a page's
+   * translates the Russian text nodes and title / placeholder / aria-label attributes of a page's
    * markup; translate="no" keeps an element as it is (the language names in the settings).
    */
   function translateDom(rootEl) {

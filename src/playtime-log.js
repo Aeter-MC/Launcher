@@ -1,7 +1,7 @@
 /**
  * playtime-log.js
- * Seconds played per calendar day (all builds together) for the weekly chart on the home page.
- * Stored in playtime-log.json as { "2026-10-21": 5400, ... }; days older than 60 are dropped.
+ * seconds played per calendar day (all builds together) for the home page playtime cards.
+ * stored in playtime-log.json as { "2026-10-21": 5400, ... }; days older than 60 are dropped.
  */
 const fs = require('fs');
 const path = require('path');
@@ -26,7 +26,7 @@ class PlaytimeLog {
     }
   }
 
-  /** Adds a session that ended now; a session over midnight is split between the days. */
+  /** adds a session that ended now; a session over midnight is split between the days. */
   add(seconds) {
     if (!seconds || seconds < 1) return;
     const days = this.read();

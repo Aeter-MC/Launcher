@@ -1,18 +1,18 @@
 /**
  * gamepad.js
- * Launcher control with a gamepad (Xbox / PlayStation / Steam Deck, the browser's "standard" layout).
+ * launcher control with a gamepad (Xbox / PlayStation / Steam Deck, the browser's "standard" layout).
  *
- *   D-pad / left stick   move the highlight to the nearest control in that direction
- *   A                    press it (a switch toggles, a list steps to its next option)
- *   B                    back: closes a menu, dialog or viewer, otherwise goes up a page
- *   X                    the "⋯" menu of the highlighted build
+ *   d-pad / left stick   move the highlight to the nearest control in that direction
+ *   a                    press it (a switch toggles, a list steps to its next option)
+ *   b                    back: closes a menu, dialog or viewer, otherwise goes up a page
+ *   x                    the "⋯" menu of the highlighted build
  *   LB / RB              previous / next tab of the sidebar
  *   right stick          scroll
  *   ← → on a list change it; a slider changes only after A on it (A or B again: done).
  *   ← with nothing more to the left on the page goes to the sidebar, → from the sidebar comes back.
  *
- * Only the focused window gets gamepad input, so the game in front doesn't drive the launcher.
- * Gamepad mode (the highlight and the hint bar) turns on with the first press and off when the mouse moves.
+ * only the focused window gets gamepad input, so the game in front doesn't drive the launcher.
+ * gamepad mode (the highlight and the hint bar) turns on with the first press and off when the mouse moves.
  */
 (function (root) {
   const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
@@ -47,7 +47,7 @@
       if (!el || !el.isConnected) return false;
       if (el.checkVisibility && !el.checkVisibility({ checkVisibilityCSS: true })) return false;
       // a card's play button (or a row's buttons) only show on hover: a stop there would look like nowhere.
-      // Only the element and its parent are checked, a page fading in is see-through for a moment.
+      // only the element and its parent are checked, a page fading in is see-through for a moment.
       for (let a = el, i = 0; a && i < 2; a = a.parentElement, i++) {
         if (getComputedStyle(a).opacity === '0') return false;
       }
@@ -55,7 +55,7 @@
       return r.width > 0 && r.height > 0;
     }
 
-    /** The topmost open overlay (menu, dialog, viewer, first-run setup) or the whole page. */
+    /** the topmost open overlay (menu, dialog, viewer, first-run setup) or the whole page. */
     function scope() {
       let best = null;
       let bestZ = -Infinity;
@@ -67,7 +67,7 @@
       return best || document.body;
     }
 
-    /** What the highlight lands on: a hidden checkbox is drawn on its switch, or on its row. */
+    /** what the highlight lands on: a hidden checkbox is drawn on its switch, or on its row. */
     function visualOf(el) {
       if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
         const r = el.getBoundingClientRect();
@@ -92,7 +92,7 @@
       return [...out].filter(el => !hints || !hints.contains(el));
     }
 
-    /** Where a page starts: Play on the home page, otherwise its first control. */
+    /** where a page starts: Play on the home page, otherwise its first control. */
     function pageStart(list) {
       const page = document.querySelector('.page.active');
       if (!page) return null;
@@ -117,7 +117,7 @@
     }
 
     // ---------- highlight ----------
-    // The ring is its own layer above everything (dialogs, menus, toasts), moved over the highlighted
+    // the ring is its own layer above everything (dialogs, menus, toasts), moved over the highlighted
     // control each frame. An outline on the control itself gets clipped by its containers and covered
     // by its neighbours.
     const RING_GAP = 3;
@@ -130,7 +130,7 @@
     let ringKey = '';
     let ringJump = true; // the first placement appears in place instead of sliding in
 
-    /** The part of the control the ring goes round: a theme's preview, a switch's pill. */
+    /** the part of the control the ring goes round: a theme's preview, a switch's pill. */
     function ringBox(el) {
       if (el.matches('.theme-swatch')) return el.querySelector('.tsw') || el;
       if (el.matches('.switch')) return el.querySelector('span') || el;
@@ -189,7 +189,7 @@
       const sc = scope();
       lastInScope.set(sc, el);
       if (sc === document.body && !inSidebar(el)) lastMain = el;
-      // The highlight is drawn by the class alone. Real focus would leave the browser's focus ring
+      // the highlight is drawn by the class alone. Real focus would leave the browser's focus ring
       // behind after the mouse takes over, so only a text field that A opened holds it, until we move on.
       leaveField(el);
       updateHints();
@@ -203,14 +203,14 @@
       if (ae && ae !== document.body && ae !== next && !(next && next.contains(ae))) ae.blur();
     }
 
-    /** X is shown only where it does something: on a build with a "⋯" menu. */
+    /** x is shown only where it does something: on a build with a "⋯" menu. */
     function menuButton() {
       if (!target) return null;
       const owner = target.closest('.bcard, .trow, .rcard') || target;
       return owner.querySelector('[data-act="menu"]');
     }
 
-    /** Takes a slider (← → change it) or lets it go. */
+    /** takes a slider (← → change it) or lets it go. */
     function setEditing(el) {
       if (editing) editing.classList.remove('gp-editing');
       editing = el;
@@ -247,7 +247,7 @@
       }
     }
 
-    /** Keeps the highlight on something that exists and is in the topmost overlay. */
+    /** keeps the highlight on something that exists and is in the topmost overlay. */
     function ensureTarget() {
       const sc = scope();
       if (target && sc.contains(target) && visible(target)) return true;
@@ -261,7 +261,7 @@
     const inSidebar = (el) => { const sb = sidebar(); return !!(sb && sb.contains(el)); };
     let lastMain = null; // the last highlighted control on the page, for → back from the sidebar
 
-    /** The best of `list` in that direction from the highlight, or null. rowOnly: only ones level with it. */
+    /** the best of `list` in that direction from the highlight, or null. rowOnly: only ones level with it. */
     function pick(list, dir, rowOnly = false) {
       const from = target.getBoundingClientRect();
       const fx = from.left + from.width / 2;
@@ -316,7 +316,7 @@
         if (best) setTarget(best);
         return;
       }
-      // The page and the sidebar are separate: up/down stay in one of them, left at the page's edge
+      // the page and the sidebar are separate: up/down stay in one of them, left at the page's edge
       // goes to the sidebar's current tab and right from the sidebar returns where you were.
       const side = inSidebar(target);
       const same = all.filter(el => inSidebar(el) === side);
@@ -354,6 +354,11 @@
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
       }
+      if (el.matches('.layout-resize')) {
+        if (editing !== el) return false;
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: step > 0 ? 'ArrowRight' : 'ArrowLeft', cancelable: true }));
+        return true;
+      }
       if (el.tagName === 'INPUT' && el.type === 'range') {
         if (editing !== el) return false; // not taken: ← → move on
         const min = Number(el.min || 0);
@@ -379,7 +384,7 @@
       if (!ensureTarget()) return;
       const el = target;
       if (el.tagName === 'SELECT') { adjust('right'); return; }
-      if (el.tagName === 'INPUT' && el.type === 'range') { setEditing(editing === el ? null : el); return; }
+      if (el.matches('input[type=range], .layout-resize')) { setEditing(editing === el ? null : el); return; }
       if (el.matches('input:not([type=checkbox]):not([type=radio]), textarea')) {
         el.focus();
         if (el.select) el.select();
@@ -425,7 +430,7 @@
     }
 
     // ---------- polling ----------
-    // An axis counts only after it has been seen near the center once: some devices that Windows
+    // an axis counts only after it has been seen near the center once: some devices that Windows
     // lists as gamepads (wheels, tablets, worn sticks) rest at -1 or drift, and would otherwise
     // steer the launcher and keep turning gamepad mode back on.
     const armed = new Map(); // `${pad.index}:${axis}` -> true

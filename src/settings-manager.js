@@ -1,6 +1,6 @@
 /**
  * settings-manager.js
- * Reads and persists user settings in launcher-config.json.
+ * reads and persists user settings in launcher-config.json.
  */
 const fs = require('fs');
 const path = require('path');
@@ -24,7 +24,7 @@ function getSettingsPath(appDataDir) {
 
 function getDefaultSettings() {
   const totalMemGb = Math.max(4, Math.round(os.totalmem() / (1024 * 1024 * 1024)));
-  // Recommended allocation: half of total RAM or up to 6 GB
+  // recommended allocation: half of total RAM or up to 6 GB
   const defaultRam = Math.min(6, Math.max(2, Math.floor(totalMemGb / 2)));
 
   return {
@@ -38,14 +38,16 @@ function getDefaultSettings() {
     resolutionWidth: 1280,
     resolutionHeight: 720,
     fullscreen: false,
-    jvmPreset: 'auto', // GC and tuning flags, see jvm-flags.js
+    jvmPreset: 'auto', // gC and tuning flags, see jvm-flags.js
     customJvmArgs: '',
     discordPresence: true, // "Играет в AeterMC" in Discord while the game runs
+    launchProfiling: false, // launch timings, off by default
     actionAfterLaunch: 'minimize', // 'minimize' | 'hide' | 'keep'
     showSnapshots: false,
     showConsole: false,
     nativeTitlebar: false,
     theme: 'dark-mono', // id of a file in design/themes
+    homeLayout: null,
     autoCheckModUpdates: true,
     autoUpdate: true, // launcher updates: download in the background, put in place on exit
     language: null, // 'ru' | 'en'; null: the system language (see i18n.detectLanguage)
@@ -54,7 +56,8 @@ function getDefaultSettings() {
     animations: true,
     gamepad: true, // launcher control with a gamepad (renderer/gamepad.js)
     setupDone: false,
-    prismImport: null, // Prism sync: null = not asked yet, true = show Prism builds in place, false = off
+    prismImport: null,
+    externalInstanceFolders: [],
     // per category: 'always' | 'ask' | 'never'
     optionsSync: { ...DEFAULT_SYNC_MODES }
   };
@@ -88,9 +91,10 @@ class SettingsManager {
   }
 
   save(newSettings) {
-    this.settings = Object.assign({}, this.settings, newSettings);
+    const merged = Object.assign({}, this.settings, newSettings);
     try {
-      fs.writeFileSync(this.filePath, JSON.stringify(this.settings, null, 2), 'utf-8');
+      fs.writeFileSync(this.filePath, JSON.stringify(merged, null, 2), 'utf-8');
+      this.settings = merged;
       return true;
     } catch (e) {
       console.error('[Settings] Error saving settings:', e.message);

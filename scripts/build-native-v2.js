@@ -1,6 +1,6 @@
 'use strict';
 
-// Local build only. Never invokes the legacy installer or writes outside this checkout.
+// local build only. Never invokes the legacy installer or writes outside this checkout.
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -52,7 +52,7 @@ try {
   const sdkLib = useLocalSdk ? path.join(sdk, 'libs', 'c') : path.join(installedSdk, 'Lib', sdkVersion);
   env.INCLUDE = [path.join(msvc, 'include'), ...['ucrt', 'shared', 'um'].map(name => path.join(includesRoot, sdkVersion, name))].join(';');
   env.LIB = [path.join(msvc, 'lib', 'x64'), ...['ucrt', 'um'].map(name => path.join(sdkLib, name, 'x64'))].join(';');
-  // Windows environment names are case-insensitive, including when inherited from Node.
+  // windows environment names are case-insensitive, including when inherited from Node.
   const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') || 'Path';
   env[pathKey] = compilerDirectory + ';' + (env[pathKey] || '');
   report.toolchain = { msvc: toolsVersion, sdk: sdkVersion, compiler };

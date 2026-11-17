@@ -1,4 +1,4 @@
-/* Our own popup for <select class="select">: the native one can't be styled in Electron.
+/* our own popup for <select class="select">: the native one can't be styled in Electron.
    The <select> stays the source of truth (value, options, 'change'), only its popup is replaced. */
 (() => {
   let open = null; // { select, menu, items, active, arrow }
@@ -7,7 +7,7 @@
 
   const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 
-  /* The select draws its chevron as a background, which can't turn. While the menu is open
+  /* the select draws its chevron as a background, which can't turn. While the menu is open
      the select hides it (.select-open) and a copy on top of it turns over instead. */
   function arrowFor(select) {
     if (closing && closing.select === select) {

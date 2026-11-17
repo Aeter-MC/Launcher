@@ -5,8 +5,8 @@
  *   -> src/renderer/themes.js    theme list with preview colors for the settings picker
  *   -> src/themes.json           the same list for the main process (window background before paint)
  *
- * Variable names are the token path joined with "-": color.log.info -> --color-log-info.
- * Usage: npm run tokens            (one-off)
+ * variable names are the token path joined with "-": color.log.info -> --color-log-info.
+ * usage: npm run tokens            (one-off)
  *        npm run tokens -- --watch (rebuild on every save in design/)
  */
 const fs = require('fs');
@@ -93,7 +93,7 @@ function build() {
   }
   fs.writeFileSync(OUT_CSS, parts.join('\n\n') + '\n', 'utf-8');
 
-  // Preview colors for the picker come from the theme itself, falling back to the base tokens
+  // preview colors for the picker come from the theme itself, falling back to the base tokens
   const pick = (t, name) => (t.vars.find(v => v.name === name) || base.find(v => v.name === name) || {}).value;
   const list = themes.map(t => ({
     id: t.id,

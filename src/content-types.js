@@ -1,7 +1,7 @@
 /**
  * content-types.js
- * What a build holds that comes from Modrinth: mods, resource packs and shaders.
- * Each is a Modrinth project type with its own folder in the build and its own kind of files;
+ * what a build holds that comes from Modrinth: mods, resource packs and shaders.
+ * each is a Modrinth project type with its own folder in the build and its own kind of files;
  * resource packs and shaders may also be unpacked folders.
  */
 const path = require('path');
@@ -19,7 +19,7 @@ function contentType(kind = 'mod') {
   return type;
 }
 
-/** Folder of this kind of content in a build (as read by InstancesManager.readInstance). */
+/** folder of this kind of content in a build (as read by InstancesManager.readInstance). */
 function contentDir(inst, kind = 'mod') {
   return kind === 'mod' ? inst.modsDir : path.join(inst.minecraftDir, contentType(kind).folder);
 }

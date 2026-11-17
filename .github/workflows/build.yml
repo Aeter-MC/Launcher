@@ -169,6 +169,12 @@ jobs:
         env:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
+          if [[ -s "v$VERSION.md" ]]; then
+            cp -- "v$VERSION.md" notes.md
+            cat notes.md
+            exit 0
+          fi
+
           # commit subjects since the previous release (for a stable one: the previous stable one),
           # without the version bump commits; shown in the launcher's update menu (in English, like the commits)
           exclude=()

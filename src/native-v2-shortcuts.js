@@ -1,5 +1,5 @@
 'use strict';
-// V2 writes only its own shortcuts. The caller supplies the persistent runner
+// v2 writes only its own shortcuts. The caller supplies the persistent runner
 // and profile directory; no per-instance executable or runtime compilation.
 const fs = require('fs');
 const path = require('path');

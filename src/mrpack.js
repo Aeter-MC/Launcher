@@ -1,11 +1,11 @@
 /**
  * mrpack.js
- * Modrinth modpacks (.mrpack): importing one as a new build and exporting a build as one.
+ * modrinth modpacks (.mrpack): importing one as a new build and exporting a build as one.
  *
- * An .mrpack is a zip with modrinth.index.json (the Minecraft and loader versions, and the files
+ * an .mrpack is a zip with modrinth.index.json (the Minecraft and loader versions, and the files
  * to download with their hashes) and overrides/ (files copied as they are). On export, mods,
  * resource packs and shaders that Modrinth knows go into the index as links, so the pack stays small.
- * Format: https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack
+ * format: https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack
  */
 const fs = require('fs');
 const path = require('path');
@@ -36,23 +36,23 @@ function allowedPackUrl(url, hosts) {
   }
 }
 
-// A build's loader and its key in the pack's dependencies; Quilt first, a Quilt pack may list Fabric too
+// a build's loader and its key in the pack's dependencies; Quilt first, a Quilt pack may list Fabric too
 const LOADER_KEYS = { quilt: 'quilt-loader', fabric: 'fabric-loader', neoforge: 'neoforge', forge: 'forge' };
 
-// Files in the mods, resource pack and shader folders may be on Modrinth: those go into the index as links
+// files in the mods, resource pack and shader folders may be on Modrinth: those go into the index as links
 const LINKED_FOLDERS = new Set(Object.values(CONTENT).map(c => c.folder));
 const CLIENT_ONLY_FOLDERS = new Set([CONTENT.resourcepack.folder, CONTENT.shader.folder]);
 
-// Not offered for export: made again by the game, personal, or the launcher's own
+// not offered for export: made again by the game, personal, or the launcher's own
 const EXPORT_HIDDEN = new Set([
   'logs', 'crash-reports', '.cache', 'debug', '.fabric', '.quilt', '.mixin.out', 'natives',
   'usercache.json', 'usernamecache.json', 'command_history.txt', 'realms_persistence.json', 'servers.dat_old',
   'instance.json', 'instance.cfg', 'mmc-pack.json', 'icon.png'
 ]);
-// Offered, but off by default: worlds, personal settings, pictures
+// offered, but off by default: worlds, personal settings, pictures
 const EXPORT_OFF = new Set(['saves', 'screenshots', 'options.txt', 'servers.dat', 'backups', 'schematics']);
 
-/** Full path of a pack path inside dir, or null when the path would lead out of it. */
+/** full path of a pack path inside dir, or null when the path would lead out of it. */
 function insideDir(dir, rel) {
   return checkedDestination(dir, rel);
 }
@@ -97,12 +97,12 @@ function packLoader(deps) {
   return { loader: 'vanilla', loaderVersion: '' };
 }
 
-/** Files a client needs: server-only ones are left out. */
+/** files a client needs: server-only ones are left out. */
 function clientFiles(index) {
   return (Array.isArray(index.files) ? index.files : []).filter(f => !(f.env && f.env.client === 'unsupported'));
 }
 
-/** Path of an entry inside the build when it is an override for the client, otherwise null. */
+/** path of an entry inside the build when it is an override for the client, otherwise null. */
 function overridePath(entryName) {
   for (const prefix of ['overrides/', 'client-overrides/']) {
     if (entryName.startsWith(prefix)) return entryName.slice(prefix.length);
@@ -110,7 +110,7 @@ function overridePath(entryName) {
   return null;
 }
 
-/** Overrides of the pack, client-overrides last so they win over the shared ones. */
+/** overrides of the pack, client-overrides last so they win over the shared ones. */
 function overrideEntries(zip) {
   const entries = zip.getEntries().filter(e => !e.isDirectory && overridePath(e.entryName));
   return entries.sort((a, b) => a.entryName.startsWith('client-') - b.entryName.startsWith('client-'));
@@ -147,7 +147,7 @@ async function forEachLimit(items, limit, fn) {
 }
 
 /**
- * Downloads one file of the pack, trying its links in turn, and checks its hash.
+ * downloads one file of the pack, trying its links in turn, and checks its hash.
  * onBytes(n) reports received bytes; a failed attempt takes its bytes back.
  */
 async function downloadPackFile(file, dest, onBytes, online = false) {
@@ -237,14 +237,14 @@ class MrpackManager {
     }
   }
 
-  /** What a pack holds, for the import window, before anything is downloaded. */
+  /** what a pack holds, for the import window, before anything is downloaded. */
   inspect(file) {
     const zip = openZip(file);
     return describe(file, zip, readIndex(zip));
   }
 
   /**
-   * Makes a new build from a pack: installs the loader, downloads the files, unpacks the overrides.
+   * makes a new build from a pack: installs the loader, downloads the files, unpacks the overrides.
    * onProgress({ text, done, total }): done/total in bytes while downloading, otherwise only text.
    * getJava(minecraftVersion) gives Java for the Forge/NeoForge installer. A failed import leaves no build behind.
    */
@@ -257,7 +257,7 @@ class MrpackManager {
       throw new Error(t('В архиве сборки указана недопустимая версия игры или загрузчика'));
     }
 
-    // A broken or hostile path fails the import before anything is downloaded
+    // a broken or hostile path fails the import before anything is downloaded
     const probe = path.join(this.instancesManager.instancesDir, '_');
     for (const f of files) {
       if (!insideDir(probe, f.path)) throw new Error(t('Модпак повреждён: недопустимый путь {path}', { path: String(f.path) }));
@@ -266,7 +266,7 @@ class MrpackManager {
       if (!insideDir(probe, overridePath(e.entryName))) throw new Error(t('Модпак повреждён: недопустимый путь {path}', { path: e.entryName }));
     }
 
-    // The loader goes first, like for a new build: a failed install leaves nothing behind
+    // the loader goes first, like for a new build: a failed install leaves nothing behind
     let { loaderVersion } = info;
     let versionId = info.minecraft;
     if (info.loader !== 'vanilla') {
@@ -326,7 +326,7 @@ class MrpackManager {
     });
   }
 
-  /** Top-level files and folders of a build that can go into a pack: [{ name, isDir, sizeBytes, checked }] */
+  /** top-level files and folders of a build that can go into a pack: [{ name, isDir, sizeBytes, checked }] */
   listExportEntries(inst) {
     const root = inst.minecraftDir;
     let entries = [];
@@ -357,9 +357,9 @@ class MrpackManager {
   }
 
   /**
-   * Writes the build as an .mrpack: files Modrinth knows as links, the rest into overrides/.
+   * writes the build as an .mrpack: files Modrinth knows as links, the rest into overrides/.
    * options: { name, version, include: [top-level names], file }
-   * Returns { file, linked, packed, online }.
+   * returns { file, linked, packed, online }.
    */
   async exportPack(inst, { name, version, include = [], file }, onProgress = () => {}) {
     const loaderKey = LOADER_KEYS[inst.loader];
@@ -378,7 +378,7 @@ class MrpackManager {
     const packPath = (f) => f.rel.split(path.sep).join('/');
     const wanted = files.filter(f => !/\.(part|mcl-download)$/i.test(f.rel));
 
-    // Mods, resource packs and shaders Modrinth knows by their hash
+    // mods, resource packs and shaders Modrinth knows by their hash
     onProgress({ text: t('Поиск файлов на Modrinth…') });
     const linkable = wanted.filter(f => LINKED_FOLDERS.has(packPath(f).split('/')[0]) && /\.(jar|zip)(\.disabled)?$/i.test(f.rel));
     const hashes = linkable.map(f => this.modrinthManager.sha1Of(f.full));

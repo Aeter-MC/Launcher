@@ -1,13 +1,13 @@
 /**
  * generate-themes.js
- * Writes the 16 stock color themes into design/themes/<id>.json.
+ * writes the 16 stock color themes into design/themes/<id>.json.
  *
- * Each theme is described by a hue for the tinted greys and an accent color; the rest of the
+ * each theme is described by a hue for the tinted greys and an accent color; the rest of the
  * palette (backgrounds, lines, text, logs, block tiles) is derived from them so every theme has
  * the same contrast steps. The generated files are ordinary token files: after generating you can
  * tweak any value by hand or in Figma — just do not run this script again, or it will overwrite them.
  *
- * Usage: node scripts/generate-themes.js && npm run tokens
+ * usage: node scripts/generate-themes.js && npm run tokens
  */
 const fs = require('fs');
 const path = require('path');
@@ -38,7 +38,7 @@ const contrast = (a, b) => {
   const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
   return (x + 0.05) / (y + 0.05);
 };
-// Accent used as text/icons (links, "Установлен") must stay readable on the surface:
+// accent used as text/icons (links, "Установлен") must stay readable on the surface:
 // step it towards black (light themes) or white (dark themes) until contrast >= 4.5.
 function readableOn(color, surface, towards) {
   let c = color;
@@ -57,7 +57,7 @@ const HUES = [
   { key: 'pink', name: 'Розовая', hue: 328, dark: '#ee76b6', light: '#cf3a88' },
   { key: 'yellow', name: 'Жёлтая', hue: 46, dark: '#e8c547', light: '#e0b10f' },
   { key: 'orange', name: 'Оранжевая', hue: 24, dark: '#f28d45', light: '#e06a17' },
-  // Monotone: warm neutral greys like the Claude app, accent is the strongest neutral
+  // monotone: warm neutral greys like the Claude app, accent is the strongest neutral
   { key: 'mono', name: 'Монотонная', hue: 48, dark: '#ece9df', light: '#1f1e1c', mono: true }
 ];
 

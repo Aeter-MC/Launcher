@@ -1,15 +1,16 @@
 /**
  * launcher-core.js
- * Minecraft game launch orchestrator with support for Instances, Ely.by injection, and Microsoft auth.
+ * minecraft game launch orchestrator with support for Instances, Ely.by injection, and Microsoft auth.
  */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { xuidFromToken } = require('./microsoft-auth');
 const { t } = require('./i18n/i18n');
 const { gcArgs } = require('./jvm-flags');
 const { execFile } = require('child_process');
 
-// Quotes group whitespace; backslashes are literal except before a quote. No shell.
+// quotes group whitespace; backslashes are literal except before a quote. No shell.
 function parseJvmArgs(value) {
   const result = [];
   let current = '', quote = '', started = false;
@@ -37,12 +38,30 @@ function secureJavaCheck(java) {
 // MCLC passes the access token as --xuid when meta.xuid is empty, so accounts without an Xbox id get this instead
 const NO_XUID = '0';
 
+// java's UUID.nameUUIDFromBytes("OfflinePlayer:" + username). MCLC's
+// authenticator caches the first generated UUID process-wide, which makes a
+// second offline account launch with the first account's identity.
+function offlineAuthorization(username) {
+  const bytes = crypto.createHash('md5').update(`OfflinePlayer:${username}`, 'utf8').digest();
+  bytes[6] = (bytes[6] & 0x0f) | 0x30;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const uuid = bytes.toString('hex');
+  return {
+    access_token: uuid,
+    client_token: uuid,
+    uuid,
+    name: username,
+    user_properties: '{}',
+    meta: { type: 'offline', xuid: NO_XUID }
+  };
+}
+
 // minecraft-launcher-core takes ~200 ms to load, so it is loaded on the first launch only
 let mclc = null;
 function launcherLib() {
   if (!mclc) {
     mclc = require('minecraft-launcher-core');
-    // The pinned dependency uses child.exec for this one probe. Replace the
+    // the pinned dependency uses child.exec for this one probe. Replace the
     // adapter method before Client.launch constructs its Handler.
     require('minecraft-launcher-core/components/handler').prototype.checkJava = secureJavaCheck;
   }
@@ -109,7 +128,7 @@ class LauncherCore {
   }
 
   /**
-   * Launch Minecraft.
+   * launch Minecraft.
    *
    * root      - shared directory with versions/libraries/assets (main .minecraft)
    * gameDir   - directory with saves/mods/options (instance folder or root itself)
@@ -135,6 +154,7 @@ class LauncherCore {
       customJvmArgs = '',
       jvmPreset = 'auto',
       javaMajor = 0,
+      shenandoahSupported = null,
       profileJvmArgs = [],
       resolutionWidth = 1280,
       resolutionHeight = 720,
@@ -152,7 +172,7 @@ class LauncherCore {
       const extraJvmArgs = [];
 
       if (account && account.type === 'microsoft' && account.mclcAuth) {
-        // Accounts saved before xuid was stored get it from the token
+        // accounts saved before xuid was stored get it from the token
         const meta = account.mclcAuth.meta || {};
         const xuid = meta.xuid || xuidFromToken(account.mclcAuth.access_token) || NO_XUID;
         authObj = { ...account.mclcAuth, meta: { ...meta, xuid } };
@@ -172,7 +192,7 @@ class LauncherCore {
         }
       } else {
         const uName = (account && account.username) || 'Player';
-        authObj = await launcherLib().Authenticator.getAuth(uName);
+        authObj = offlineAuthorization(uName);
         log('info', `[AUTH]: ${t('Оффлайн режим ({name})', { name: uName })}`);
       }
 
@@ -180,10 +200,12 @@ class LauncherCore {
       const min = Math.min(max, Math.max(1, Number(minRam) || 1));
 
       const ownArgs = parseJvmArgs(customJvmArgs);
-      const gc = gcArgs({ preset: jvmPreset, javaMajor, maxRamGb: max, customArgs: ownArgs });
+      const gc = gcArgs({ preset: jvmPreset, javaMajor, maxRamGb: max, customArgs: ownArgs, shenandoahSupported });
       if (gc.gc) log('info', `[JVM]: ${t('Сборщик мусора {gc}, флаги подобраны под {ram} ГБ', { gc: gc.gc, ram: max })}`);
       if (gc.note === 'own-gc') log('info', `[JVM]: ${t('Сборщик мусора задан в своих аргументах — готовые флаги не добавлены')}`);
       if (gc.note === 'zgc-old-java') log('warn', `[JVM]: ${t('ZGC нужна Java 17 или новее (сейчас {java}) — используется G1', { java: javaMajor })}`);
+      if (gc.note === 'shenandoah-old-java') log('warn', `[JVM]: ${t('Shenandoah нужна Java 17 или новее (сейчас {java}) — используется G1', { java: javaMajor })}`);
+      if (gc.note === 'shenandoah-unavailable') log('warn', `[JVM]: ${t('Эта сборка Java не поддерживает Shenandoah — используется G1')}`);
       // own arguments go after the preset, so an own -XX:G1... value wins over the preset's
       const customArgs = [...gc.args, ...ownArgs, ...extraJvmArgs, ...profileJvmArgs];
 
@@ -226,7 +248,7 @@ class LauncherCore {
       this.client = new (launcherLib().Client)();
       this.launchStartTime = Date.now();
 
-      // Prepare the same command and files, but let the native runner start Java.
+      // prepare the same command and files, but let the native runner start Java.
       let prepared = null;
       if (prepareOnly) {
         this.client.startMinecraft = args => {
@@ -251,7 +273,7 @@ class LauncherCore {
       });
 
       this.client.on('download-status', (status) => {
-        // Asset byte events are per file. The progress event counts the entire index.
+        // asset byte events are per file. The progress event counts the entire index.
         if (!onProgress || !status || status.type === 'assets') return;
         const total = status.total || 0;
         const current = status.current || 0;
@@ -329,5 +351,5 @@ class LauncherCore {
 }
 
 module.exports = {
-  LauncherCore, parseJvmArgs, secureJavaCheck
+  LauncherCore, parseJvmArgs, secureJavaCheck, offlineAuthorization
 };

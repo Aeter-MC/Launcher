@@ -1,8 +1,8 @@
 /**
  * updater.js
- * Launcher self-update from GitHub Releases (published by .github/workflows/build.yml).
- * Every release carries update.json ({ version, electron, asar: { size, sha256 } }) and app.asar.
- * The installed launcher downloads the new app.asar next to the old one and swaps it in once it
+ * launcher self-update from GitHub Releases (published by .github/workflows/build.yml).
+ * every release carries update.json ({ version, electron, asar: { size, sha256 } }) and app.asar.
+ * the installed launcher downloads the new app.asar next to the old one and swaps it in once it
  * has quit: right away with "restart", otherwise on the next exit. What an app.asar can't update
  * gets a link to the release instead: the portable build (unpacked into a temp folder on every
  * start), a release on another Electron version, an install folder that isn't writable.
@@ -21,7 +21,7 @@ const UNINSTALL_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Unin
 // the GitHub API allows 60 requests an hour without a token: release notes are kept a while
 const RELEASES_TTL = 10 * 60 * 1000;
 
-/** A failed request to GitHub in words for the update menu. */
+/** a failed request to GitHub in words for the update menu. */
 function requestError(e) {
   const status = e.response && e.response.status;
   if (status === 404) return t('на GitHub пока нет релизов с обновлением');
@@ -52,6 +52,7 @@ class Updater {
     this.uninstallKey = uninstallKey || UNINSTALL_KEY;
     this.manifest = null;
     this.releasesCache = null;
+    this.releaseNotesCache = new Map();
     this.swapStarted = false;
     // status: idle | available | downloading | ready | manual (+ version, size, page, progress, reason);
     // checking, checkedAt and error describe the last check or download, for the update menu
@@ -72,7 +73,7 @@ class Updater {
     this.onChange(this.state);
   }
 
-  /** Looks for a newer release. A failed check leaves its error in the state; the next one tries again. */
+  /** looks for a newer release. A failed check leaves its error in the state; the next one tries again. */
   async check() {
     const { enabled, checking, status } = this.state;
     if (!enabled || checking || status === 'downloading' || status === 'ready') return this.state;
@@ -120,7 +121,7 @@ class Updater {
     }
   }
 
-  /** Downloads app.asar of the found release next to the current one and checks it. */
+  /** downloads app.asar of the found release next to the current one and checks it. */
   async download() {
     if (this.state.status !== 'available') return this.state;
     const { version, asar } = this.manifest;
@@ -155,7 +156,7 @@ class Updater {
   }
 
   /**
-   * Release notes for the update menu: the releases newer than this launcher and its own one,
+   * release notes for the update menu: the releases newer than this launcher and its own one,
    * newest first, as { version, date, notes, url }. Pre-releases are left out, like in check().
    */
   async releases() {
@@ -175,8 +176,31 @@ class Updater {
     return list;
   }
 
+  async releaseNotes(tag) {
+    if (typeof tag !== 'string' || !/^v\d[\w.+-]{0,63}$/.test(tag)) throw new Error('Invalid release tag');
+    const cached = this.releaseNotesCache.get(tag);
+    if (cached && Date.now() - cached.time < RELEASES_TTL) return cached.notes;
+
+    const url = `https://api.github.com/repos/${REPO}/releases/tags/${encodeURIComponent(tag)}`;
+    const notes = axios.get(url, {
+      headers: { Accept: 'application/vnd.github+json' }, timeout: 10000, maxContentLength: 1024 * 1024, maxRedirects: 0
+    }).then(({ data }) => {
+      if (data?.tag_name !== tag || data.draft) throw new Error('Invalid GitHub release');
+      return typeof data.body === 'string' ? data.body : '';
+    });
+    this.releaseNotesCache.delete(tag);
+    this.releaseNotesCache.set(tag, { time: Date.now(), notes });
+    if (this.releaseNotesCache.size > 20) this.releaseNotesCache.delete(this.releaseNotesCache.keys().next().value);
+    try {
+      return await notes;
+    } catch (error) {
+      if (this.releaseNotesCache.get(tag)?.notes === notes) this.releaseNotesCache.delete(tag);
+      throw error;
+    }
+  }
+
   /**
-   * Starts a hidden PowerShell that waits for this process to exit, puts the downloaded app.asar
+   * starts a hidden PowerShell that waits for this process to exit, puts the downloaded app.asar
    * in place and, with restart, starts the launcher again. Returns false when there is nothing to swap.
    */
   startSwap(restart) {
@@ -191,7 +215,7 @@ class Updater {
       `if ($ok) { Set-ItemProperty -LiteralPath ${q(this.uninstallKey)} -Name DisplayVersion -Value ${q(String(this.state.version))} -ErrorAction SilentlyContinue }`,
       restart ? `Start-Process -FilePath ${q(this.exePath)}` : ''
     ].join('; ');
-    // Through `cmd start`: a direct child is killed together with the launcher (libuv puts it in a
+    // through `cmd start`: a direct child is killed together with the launcher (libuv puts it in a
     // kill-on-close job) and a detached one doesn't start everywhere. -EncodedCommand keeps cmd away
     // from quotes, % and non-Latin letters in the paths.
     const encoded = Buffer.from(script, 'utf16le').toString('base64');

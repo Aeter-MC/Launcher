@@ -1,15 +1,15 @@
 /**
  * installer-main.js
- * The installer and uninstaller of AeterMC, drawn in the launcher's own style.
+ * the installer and uninstaller of AeterMC, drawn in the launcher's own style.
  *
- * There is no separate setup program: AeterMC-Setup.exe is the portable build of the launcher with
+ * there is no separate setup program: AeterMC-Setup.exe is the portable build of the launcher with
  * `aeterSetup: true` in its package.json (see scripts/build.js). The portable stub unpacks the app
  * into a temp folder and starts it; in that mode main.js hands over to this file, which copies the
  * unpacked folder into the install folder, creates shortcuts and registers the app in
  * "Apps & features". The installed copy starts without the stub, so it opens as the normal launcher.
  * `AeterMC.exe --uninstall` (the UninstallString) opens the uninstaller.
  *
- * Not packaged (`npm start -- --installer` / `-- --uninstall`) nothing is written: the steps are
+ * not packaged (`npm start -- --installer` / `-- --uninstall`) nothing is written: the steps are
  * simulated so the window can be previewed.
  */
 const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } = require('electron');
@@ -26,7 +26,7 @@ const APP_ID = 'dev.aetermc.launcher';
 const UNINSTALL_KEY = 'HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AeterMC';
 const DEFAULT_DIR = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Programs', APP_NAME);
 // the launcher keeps its data here (see main.js); the uninstaller may remove it on request
-// Set by start(): the launcher's src folder (themes, styles, data folder, package.json)
+// set by start(): the launcher's src folder (themes, styles, data folder, package.json)
 let launcherSrc = null;
 let DATA_DIR = null;
 
@@ -34,7 +34,7 @@ const simulated = !app.isPackaged;
 let win = null;
 let busy = false;
 
-// ================= HELPERS =================
+// helpers
 
 function exec(file, args) {
   return new Promise((resolve) => {
@@ -42,7 +42,7 @@ function exec(file, args) {
   });
 }
 
-/** Runs a PowerShell snippet and parses its JSON output (UTF-8, so non-Latin paths come through). */
+/** runs a PowerShell snippet and parses its JSON output (UTF-8, so non-Latin paths come through). */
 async function psJson(script) {
   const r = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${script} | ConvertTo-Json -Compress`]);
@@ -58,7 +58,7 @@ function isDirEmpty(dir) {
   try { return ofs.readdirSync(dir).length === 0; } catch (e) { return true; }
 }
 
-/** The folder holds an installed AeterMC (and so may be emptied on update or uninstall). */
+/** the folder holds an installed AeterMC (and so may be emptied on update or uninstall). */
 function isOurInstall(dir) {
   return exists(path.join(dir, EXE_NAME)) && exists(path.join(dir, 'resources', 'app.asar'));
 }
@@ -78,7 +78,7 @@ function shortcutPaths() {
   };
 }
 
-/** Theme the launcher uses, so the installer of an update looks like the launcher the user knows. */
+/** theme the launcher uses, so the installer of an update looks like the launcher the user knows. */
 function pickTheme() {
   let themes = [];
   try { themes = require(path.join(launcherSrc, 'themes.json')); } catch (e) {}
@@ -90,7 +90,7 @@ function pickTheme() {
   return themes.find(t => t.id === id) || themes.find(t => t.id === 'dark-mono') || themes[0] || null;
 }
 
-/** Where AeterMC is installed now, if anywhere. */
+/** where AeterMC is installed now, if anywhere. */
 async function findInstalled() {
   const entry = await psJson(`Get-ItemProperty -LiteralPath 'Registry::${UNINSTALL_KEY}' -ErrorAction SilentlyContinue | Select-Object InstallLocation,DisplayVersion`);
   if (entry && entry.InstallLocation && exists(path.join(entry.InstallLocation, EXE_NAME))) {
@@ -119,7 +119,7 @@ async function killAll(pids) {
   await new Promise(r => setTimeout(r, 600));
 }
 
-/** Files of the unpacked app with their sizes; directories first so they can be created in order. */
+/** files of the unpacked app with their sizes; directories first so they can be created in order. */
 function listFiles(root) {
   const out = [];
   const walk = (rel) => {
@@ -153,7 +153,7 @@ function dirSizeKb(dir) {
   try { return Math.round(listFiles(dir).reduce((s, f) => s + f.size, 0) / 1024); } catch (e) { return 0; }
 }
 
-/** Entries of the old NSIS installer for this app (they would show up twice in "Apps & features"). */
+/** entries of the old NSIS installer for this app (they would show up twice in "Apps & features"). */
 async function removeLegacyNsis(dir) {
   const old = path.join(dir, `Uninstall ${APP_NAME}.exe`);
   try { ofs.rmSync(old, { force: true }); } catch (e) {}
@@ -166,7 +166,7 @@ async function removeLegacyNsis(dir) {
   }
 }
 
-// ================= INSTALL =================
+// install
 
 async function install({ dir, desktop, startMenu }) {
   if (!path.isAbsolute(dir)) throw new Error('Укажите полный путь к папке, например C:\\Games\\AeterMC');
@@ -193,7 +193,7 @@ async function install({ dir, desktop, startMenu }) {
   const files = listFiles(src);
   const total = files.reduce((s, f) => s + f.size, 0);
 
-  // Update: the old files go first so nothing stale from the previous version stays behind
+  // update: the old files go first so nothing stale from the previous version stays behind
   if (exists(dir)) {
     for (const name of ofs.readdirSync(dir)) {
       ofs.rmSync(path.join(dir, name), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
@@ -256,7 +256,7 @@ function removeOurShortcut(lnk, dir) {
   } catch (e) {}
 }
 
-// ================= UNINSTALL =================
+// uninstall
 
 async function canUninstall() {
   if (simulated) return true;
@@ -282,12 +282,12 @@ async function uninstall({ removeData }) {
   removeOurShortcut(links.startMenu, dir);
   await exec('reg', ['delete', UNINSTALL_KEY, '/f']);
 
-  // The running exe can't delete its own folder: a hidden PowerShell waits until this process
+  // the running exe can't delete its own folder: a hidden PowerShell waits until this process
   // exits, then removes the folder (and the launcher data if asked). -EncodedCommand is UTF-16,
   // so folders with Cyrillic names survive the trip.
   const quote = (s) => `'${s.replace(/'/g, "''")}'`;
   const dirs = [dir, ...(removeData ? [DATA_DIR] : [])].map(quote).join(',');
-  // Waits for every process started from the folder (Chromium helpers and crashpad outlive the main one).
+  // waits for every process started from the folder (Chromium helpers and crashpad outlive the main one).
   const script = [
     `$dir = ${quote(dir)}`,
     `$log = Join-Path $env:TEMP 'aetermc-uninstall.log'`,
@@ -303,7 +303,7 @@ async function uninstall({ removeData }) {
     `}`
   ].join('\n');
   const encoded = Buffer.from(script, 'utf16le').toString('base64');
-  // Started through WMI: Electron kills its child processes on exit, and a `detached` PowerShell
+  // started through WMI: Electron kills its child processes on exit, and a `detached` PowerShell
   // gets no console and quits without running anything. ShowWindow = 0 keeps it invisible.
   const launcher = [
     `$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ ShowWindow = [uint16]0 }`,
@@ -319,7 +319,7 @@ async function uninstall({ removeData }) {
   return true;
 }
 
-// ================= WINDOW =================
+// window
 
 function cleanEnv() {
   const env = { ...process.env };
@@ -330,7 +330,7 @@ function cleanEnv() {
 /**
  * installer.html takes the launcher's styles (tokens.css, style.css, theme-init.js), but the two
  * live in different folders in the repo (installer/src and src) and in one app.asar when packaged.
- * So the page is written to the installer's temp folder with absolute links to both.
+ * so the page is written to the installer's temp folder with absolute links to both.
  */
 function pageWithLauncherStyles() {
   const url = (p) => pathToFileURL(p).href;
@@ -370,7 +370,7 @@ function createWindow(mode) {
 
 function start(mode) {
   if (!launcherSrc) throw new Error('installer: init(launcherSrc) was not called');
-  // The installer must not touch the launcher's own data folder (Chromium writes caches there)
+  // the installer must not touch the launcher's own data folder (Chromium writes caches there)
   app.setPath('userData', path.join(app.getPath('temp'), 'aetermc-setup'));
   app.disableHardwareAcceleration();
   if (!app.requestSingleInstanceLock()) {
@@ -455,10 +455,10 @@ function detectMode() {
   return null;
 }
 
-/** Called first by the launcher's main.js with its own src folder. */
+/** called first by the launcher's main.js with its own src folder. */
 function init(srcDir) {
   launcherSrc = srcDir;
-  DATA_DIR = require(path.join(srcDir, 'data-dir')).DATA_DIR;
+  DATA_DIR = require(path.join(srcDir, 'data-dir')).SYSTEM_DATA_DIR;
 }
 
 module.exports = { init, detectMode, run: start };

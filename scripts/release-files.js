@@ -4,7 +4,7 @@
  *                  releases/latest/download/<name> always gives the newest one (the site links there)
  *   app.asar     — the app itself, downloaded by the launcher's updater (src/updater.js)
  *   update.json  — { version, electron, asar: { size, sha256 } }, read by the updater
- * Used by .github/workflows/build.yml.
+ * used by .github/workflows/build.yml.
  */
 const fs = require('fs');
 const path = require('path');

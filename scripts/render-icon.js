@@ -1,6 +1,6 @@
 /**
  * render-icon.js — `npm run icon`
- * Renders assets/logo.svg (monotone) into assets/icon.png (256×256, transparent) in the accent of the
+ * renders assets/logo.svg (monotone) into assets/icon.png (256×256, transparent) in the accent of the
  * default theme. That PNG is the .exe / installer icon; inside the app the icon follows the chosen theme.
  */
 const fs = require('fs');

@@ -1,6 +1,6 @@
 /**
  * options-sync.js
- * Transfers Minecraft options.txt settings (keybinds, mouse, video, sound, ...) between profiles.
+ * transfers Minecraft options.txt settings (keybinds, mouse, video, sound, ...) between profiles.
  */
 const fs = require('fs');
 const path = require('path');
@@ -48,7 +48,7 @@ function optionsPath(dir) {
   return path.join(dir, 'options.txt');
 }
 
-/** Parses options.txt into an ordered Map. Values may contain ':' (JSON lists). */
+/** parses options.txt into an ordered Map. Values may contain ':' (JSON lists). */
 function readOptions(dir) {
   const map = new Map();
   const file = optionsPath(dir);
@@ -66,7 +66,7 @@ function categoryOf(key) {
   return cat ? cat.id : null;
 }
 
-/** Counts per category how many values in source differ from target. */
+/** counts per category how many values in source differ from target. */
 function diffOptions(source, target) {
   const counts = Object.fromEntries(CATEGORIES.map(c => [c.id, 0]));
   if (!source) return counts;
@@ -77,7 +77,7 @@ function diffOptions(source, target) {
   return counts;
 }
 
-/** Per category the changed values: { keybinds: [{ key, from, to }], … } (from is null when the target has none). */
+/** per category the changed values: { keybinds: [{ key, from, to }], … } (from is null when the target has none). */
 function detailOptions(source, target) {
   const details = Object.fromEntries(CATEGORIES.map(c => [c.id, []]));
   if (!source) return details;
@@ -98,7 +98,7 @@ function getMtime(dir) {
 }
 
 /**
- * Finds the profile whose options.txt was changed most recently, if it is newer than the target's.
+ * finds the profile whose options.txt was changed most recently, if it is newer than the target's.
  * profiles: [{ id, name, dir }]
  */
 function findNewestSource(targetDir, profiles) {
@@ -112,7 +112,7 @@ function findNewestSource(targetDir, profiles) {
   return best;
 }
 
-/** Copies settings of the chosen categories from sourceDir to targetDir. */
+/** copies settings of the chosen categories from sourceDir to targetDir. */
 function applyOptions(sourceDir, targetDir, categoryIds) {
   const source = readOptions(sourceDir);
   if (!source) throw new Error(t('В исходной сборке ещё нет options.txt — запустите её хотя бы раз.'));
@@ -120,7 +120,7 @@ function applyOptions(sourceDir, targetDir, categoryIds) {
   const target = readOptions(targetDir);
   const result = target ? new Map(target) : new Map();
 
-  // A fresh options.txt needs the data version, otherwise the game tries to upgrade it from an ancient format
+  // a fresh options.txt needs the data version, otherwise the game tries to upgrade it from an ancient format
   if (!target && source.has('version')) result.set('version', source.get('version'));
 
   let changed = 0;

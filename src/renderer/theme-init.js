@@ -1,6 +1,6 @@
 /**
  * theme-init.js
- * Runs before the page paints: applies the theme the main process passed in the URL
+ * runs before the page paints: applies the theme the main process passed in the URL
  * (?theme=dark-mono), so the window never flashes the default colors.
  */
 (function () {

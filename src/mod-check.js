@@ -1,13 +1,13 @@
 /**
  * mod-check.js
- * Problems in a build's mods found before the game starts, in plain words with a fix where one is clear:
+ * problems in a build's mods found before the game starts, in plain words with a fix where one is clear:
  *   - the same mod twice (two versions)                         -> switch the older one off
  *   - mods known not to work together (OptiFine + Sodium, …)
  *   - a mod's own "breaks" list naming another installed mod
  *   - a missing required mod, or one in a version the mod does not accept
  *   - the loader or Minecraft version a mod requires            -> update the loader
  *   - a mod for another loader (Forge mod in a Fabric build)
- * Only what is certain is reported: an unreadable version range is never an error.
+ * only what is certain is reported: an unreadable version range is never an error.
  */
 const { scanModsDir, satisfies, compareVersions } = require('./mod-meta');
 const { t } = require('./i18n/i18n');
