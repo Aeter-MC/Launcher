@@ -4,11 +4,6 @@
 
 Minecraft: Java Edition launcher built with Electron. [Website](https://aeter.waruk.xyz)
 
-## Launcher features
-
-- **Settings → Appearance → Home layout editor** opens a live preview. Drag cards between columns, drag a column edge to resize it, or right-click a card for its settings. Open a news card to read the full post inside AeterMC.
-- **Settings → MultiMC (and its forks)** can copy compatible instances into AeterMC or show and launch them from their original folders. Prism Launcher, Freesm Launcher, PolyMC and MultiMC share the same `instance.cfg` / `mmc-pack.json` format. Use **Add folder** for portable installs or other forks. A copied instance keeps its game content and portable settings and uses AeterMC's accounts, Java and JVM arguments.
-
 ## Build
 
 Run commands from the repository root with Node.js 22 and npm.
